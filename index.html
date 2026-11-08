@@ -951,11 +951,7 @@ const TSRULE=[["l1en",/english league (1|one)\b/],["l2en",/english league (2|two
  ["cl",/uefa champions/],["el",/uefa europa league/],["ecl",/uefa (europa )?conference/]];
 const TSNAME={ek:"Polish_Ekstraklasa",pl1:"Polish_I_Liga",hr:"Croatian_First_Football_League",rs:"Serbian_Super_Liga",ba:"Bosnian_Premier_Liga",me:"Montenegrin_First_League",mk:"Macedonian_First_League",
  al:"Albanian_Superliga",by:"Belarus_Vyscha_Liga",md:"Moldovan_National_Division",mt:"Maltese_Premier_League",at2:"Austrian_2._Liga",sui2:"Swiss_Challenge_League",si:"Slovenian_PrvaLiga",sk:"Slovak_Super_Liga",bg:"Bulgarian_First_League",cy:"Cypriot_First_Division",ua:"Ukrainian_Premier_League"};
-const TSID={ek:4422};const TSL=new Map();
-/* last + next matches of a league (independent of the day) — cached 3 min */
-async function tsLeague(c){const k=TSL.get(c);if(k&&Date.now()-k.t<180e3)return k.ev;const ev=[];
-  for(const ep of ["eventspastleague","eventsnextleague"]){try{const j=await getJSON(`${TSDB}${ep}.php?id=${TSID[c]}`,8000);ev.push(...(j.events||j.results||[]))}catch(e){}}
-  TSL.set(c,{t:Date.now(),ev});return ev}
+const TSID={ek:4422};
 function tsCode(e){const n=String(e.strLeague||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");for(const [c,re] of TSRULE)if(re.test(n))return c;return null}
 function parseTS(e,code){const raw=e.strTimestamp||(e.dateEvent&&e.strTime?e.dateEvent+"T"+e.strTime:e.dateEvent);if(!raw)return null;const dt=new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(raw)?raw:raw+"Z");if(isNaN(dt))return null;
   const s=String(e.strStatus||"").toUpperCase(),hs=parseInt(e.intHomeScore),as=parseInt(e.intAwayScore);
@@ -965,16 +961,34 @@ function parseTS(e,code){const raw=e.strTimestamp||(e.dateEvent&&e.strTime?e.dat
   return {id:"t-"+e.idEvent,code,slug:null,date:dt,state,name:off?"STATUS_POSTPONED":ht?"STATUS_HALFTIME":"",clock:state==="in"?minute+"'":"",minute,
     home:{id:"",name:e.strHomeTeam||"?",logo:e.strHomeTeamBadge?e.strHomeTeamBadge+"/tiny":null,score:isNaN(hs)?0:hs},away:{id:"",name:e.strAwayTeam||"?",logo:e.strAwayTeamBadge?e.strAwayTeamBadge+"/tiny":null,score:isNaN(as)?0:as},
     odds:null,stats:null,details:[],reds:[0,0],venue:e.strVenue||"",src:"tsdb"}}
-const TST=new Map();async function loadTSDB(key,M,DG){if(Date.now()-(TST.get(key)||0)<55e3)return;TST.set(key,Date.now());const day=key.slice(0,4)+"-"+key.slice(4,6)+"-"+key.slice(6,8);
-  const missing=()=>[...Object.keys(LEAGUES),...Object.keys(CUPS)].filter(c=>!(M.get(c)||[]).length);if(!missing().length)return;
+/* TheSportsDB has a strict free rate limit: cache every answer on the device, ask rarely, back off on 429 */
+let TSC={};try{TSC=JSON.parse(localStorage.getItem("skaner-ts")||"{}")||{}}catch(e){TSC={}}
+let TSOK={};try{TSOK=JSON.parse(localStorage.getItem("skaner-tsok")||"{}")||{}}catch(e){TSOK={}}
+let tsBlock=0,tsLast=0;const TSF=["idEvent","strLeague","strHomeTeam","strAwayTeam","strTimestamp","dateEvent","strTime","strStatus","strProgress","intHomeScore","intAwayScore","strHomeTeamBadge","strAwayTeamBadge","strVenue"];
+function tsSave(){try{const now=Date.now();Object.keys(TSC).forEach(k=>{if(now-TSC[k].t>4*864e5)delete TSC[k]});localStorage.setItem("skaner-ts",JSON.stringify(TSC))}catch(e){try{TSC={};localStorage.removeItem("skaner-ts")}catch(_){}}}
+async function tsGet(path,maxAge){const c=TSC[path];if(c&&Date.now()-c.t<maxAge)return c.ev;if(Date.now()<tsBlock)return c?c.ev:null;
+  const gap=tsLast+1500-Date.now();if(gap>0)await new Promise(r=>setTimeout(r,gap));tsLast=Date.now();
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),9000);
+  try{const r=await fetch(TSDB+path,{signal:ac.signal,cache:"no-store"});if(r.status===429){tsBlock=Date.now()+5*60e3;return c?c.ev:null}if(!r.ok)return c?c.ev:null;
+    const j=await r.json();const raw=Array.isArray(j.events)?j.events:Array.isArray(j.results)?j.results:[];
+    const ev=raw.map(e=>{const o={};TSF.forEach(f=>{if(e[f]!=null&&e[f]!=="")o[f]=e[f]});return o});TSC[path]={t:Date.now(),ev};tsSave();return ev}
+  catch(e){return c?c.ev:null}finally{clearTimeout(tm)}}
+async function tsLeague(c){const ev=[];for(const ep of ["eventspastleague","eventsnextleague"]){const l=await tsGet(`${ep}.php?id=${TSID[c]}`,6*3600e3);if(l)ev.push(...l)}return ev}
+const tsBusy=new Set();
+async function loadTSDB(key,M,DG){if(tsBusy.has(key))return;const off=Math.round((new Date(key.slice(0,4)+"-"+key.slice(4,6)+"-"+key.slice(6,8)+"T12:00:00")-dayDate(0))/864e5);if(off<-1||off>1)return;
+  tsBusy.add(key);try{const day=key.slice(0,4)+"-"+key.slice(4,6)+"-"+key.slice(6,8),now=Date.now();
+  const liveTS=[...M.values()].some(l=>l.some(m=>m.src==="tsdb"&&(m.state==="in"||(m.state==="pre"&&m.date-now<15*60e3&&now-m.date<3*3600e3))));
+  const age=off!==0?12*3600e3:liveTS?10*60e3:45*60e3;   /* fixtures change rarely: remember them, refresh seldom */
+  const missing=()=>[...Object.keys(LEAGUES),...Object.keys(CUPS)].filter(c=>!(M.get(c)||[]).some(m=>!m.src));
   const add=(list,force)=>{const by={};(Array.isArray(list)?list:[]).forEach(e=>{const c=force||tsCode(e);if(!c||(M.get(c)||[]).some(m=>!m.src))return;const m=parseTS(e,c);if(!m||ymd(m.date)!==key)return;(by[c]=by[c]||[]).push(m)});
-    Object.entries(by).forEach(([c,ms])=>{const old=(M.get(c)||[]).filter(m=>m.src==="tsdb"&&!ms.some(x=>x.id===m.id));M.set(c,[...ms,...old]);logQ.push(...ms);DG.set(c,{s:"tsdb",n:ms.length})})};
-  try{const j=await getJSON(`${TSDB}eventsday.php?d=${day}&s=Soccer`,9000);add(j.events)}catch(e){}
-  const want=missing().filter(c=>(TSNAME[c]||TSID[c])&&(["ek","hr","rs","pl1"].includes(c)||FAV.leagues.has(c)));
-  await pool(want,2,async c=>{const tries=[];if(TSID[c])tries.push(`eventsday.php?d=${day}&l=${TSID[c]}`);if(TSNAME[c])tries.push(`eventsday.php?d=${day}&l=${TSNAME[c]}`,`eventsday.php?d=${day}&l=${encodeURIComponent(TSNAME[c].replace(/_/g," "))}`);
-    for(const u of tries){if((M.get(c)||[]).length)return;try{const j=await getJSON(TSDB+u,8000);add(j.events,c)}catch(e){}}
-    if(!(M.get(c)||[]).length&&TSID[c]){const L2=await tsLeague(c);add(L2,c)}});
-  missing().forEach(c=>{if(!DG.has(c))DG.set(c,{s:"none",n:0})})}
+    Object.entries(by).forEach(([c,ms])=>{M.set(c,ms);logQ.push(...ms);DG.set(c,{s:"tsdb",n:ms.length})})};
+  add(await tsGet(`eventsday.php?d=${day}&s=Soccer`,age));
+  const want=missing().filter(c=>(TSID[c]||TSNAME[c])&&(c==="ek"||FAV.leagues.has(c)));
+  for(const c of want){const pats=[];if(TSID[c])pats.push(`eventsday.php?d=${day}&l=${TSID[c]}`);if(TSNAME[c])pats.push(`eventsday.php?d=${day}&l=${TSNAME[c]}`);
+    const order=TSOK[c]!=null&&pats[TSOK[c]]?[pats[TSOK[c]]]:pats;let got=false;
+    for(const [i,p] of order.entries()){const l=await tsGet(p,age);if(l&&l.length){add(l,c);got=true;if(TSOK[c]==null){TSOK[c]=pats.indexOf(p);try{localStorage.setItem("skaner-tsok",JSON.stringify(TSOK))}catch(e){}}break}if(l)break}
+    if(!got&&TSID[c])add(await tsLeague(c),c)}
+  missing().forEach(c=>{if(!DG.has(c))DG.set(c,{s:"none",n:0})})}finally{tsBusy.delete(key)}}
 async function loadStand(code){const s=slugOf(code);if(ONLINE!==true||FEED||!s||CUPS[code])return;const tt=STANDT.get(code);if(tt&&Date.now()-tt<20*60e3)return;STANDT.set(code,Date.now());
   try{const j=await getJSON(`${API2}${s}/standings`);let best=null;const walk=n=>{if(!n)return;const e=n.standings?.entries;if(e&&(!best||e.length>best.length))best=e;(n.children||[]).forEach(walk)};walk(j);
     if(!best||best.length<4)return;
@@ -1263,7 +1277,8 @@ function renderTodayList(){const L=t(),box=$("#todayList"),q=norm($("#tq").value
   let diag="";const DG=DIAG.get(ymd(dayDate(dayOff)));
   if(ONLINE===true&&!FEED&&DG){const e=[...DG.entries()],cnt=s=>e.filter(x=>x[1].s===s).length,lab=c=>esc(lgMeta(c).name);
     const row=(s,t)=>{const l=e.filter(x=>x[1].s===s);return l.length?`<p><b>${t}</b> ${l.map(([c,v])=>`${lab(c)}${v.n?` (${v.n})`:""}`).join(", ")}</p>`:""};
-    diag=`<details class="diag"><summary>${S2.src}: ESPN ${cnt("espn")} · TheSportsDB ${cnt("tsdb")} · ${S2.err} ${cnt("err")+cnt("none")}</summary>${row("espn","ESPN:")}${row("tsdb","TheSportsDB:")}${row("err",S2.err+" (ESPN):")}${row("none",S2.none+":")}</details>`}
+    const blk=Date.now()<tsBlock?` · ⚠ TheSportsDB limit (${Math.ceil((tsBlock-Date.now())/60e3)} min)`:"";
+    diag=`<details class="diag"><summary>${S2.src}: ESPN ${cnt("espn")} · TheSportsDB ${cnt("tsdb")} · ${S2.err} ${cnt("err")+cnt("none")}${blk}</summary>${row("espn","ESPN:")}${row("tsdb","TheSportsDB:")}${row("err",S2.err+" (ESPN):")}${row("none",S2.none+":")}</details>`}
   box.innerHTML=(list.length?tools+grouped(list):`<div class="empty">${qw.length?S2.noHit(esc($("#tq").value)):all.length?L.noneFilter:L.none}</div>`)+other+diag;
 
 }
@@ -1453,8 +1468,8 @@ async function init(){loadFav();loadLog();try{const s=localStorage.getItem("skan
   await start()}
 async function start(){if(FEED)return;loadingDay=true;
   const ok=await loadDay(0);                       /* ESPN first: sets ONLINE as soon as any league answers */
-  if(!ok&&ESPNOK!==true){ESPNOK=false;SB.delete(ymd(dayDate(0)));TST.clear();
-    try{await getJSON(`${TSDB}eventsday.php?d=${new Date().toISOString().slice(0,10)}&s=Soccer`,8000);ONLINE=true;await loadDay(0)}catch(e){ESPNOK=null;ONLINE=FEED?true:false}}
+  if(!ok&&ESPNOK!==true){ESPNOK=false;SB.delete(ymd(dayDate(0)));
+    const tl=await tsGet(`eventsday.php?d=${ymd(dayDate(0)).replace(/(\d{4})(\d\d)(\d\d)/,"$1-$2-$3")}&s=Soccer`,10*60e3);if(tl!==null){ONLINE=true;await loadDay(0)}else{ESPNOK=null;ONLINE=FEED?true:false}}
   loadingDay=false;renderChromeAll();await goOnline()}
 const IN_CLAUDE=(()=>{try{return !!window.claude||window.top!==window.self||/claude/.test(location.hostname)}catch(e){return true}})();
 async function probe(){try{await getJSON(API+"eng.1/scoreboard",7000);ESPNOK=true;ONLINE=true;return}catch(e){}
