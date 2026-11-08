@@ -930,8 +930,9 @@ async function loadDay(off,only){if(FEED)return 0;
   const key=ymd(dayDate(off));if(!SB.has(key))SB.set(key,new Map());const M=SB.get(key);
   const codes=only||[...Object.keys(LEAGUES).filter(k=>LEAGUES[k].espn),...Object.keys(CUPS)];let ok=0;
   if(!DIAG.has(key))DIAG.set(key,new Map());const DG=DIAG.get(key);
-  if(ESPNOK!==false)await pool(codes,8,async code=>{try{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);if(!ev.length&&(M.get(code)||[]).some(m=>m.src==="tsdb"))return;M.set(code,ev);logQ.push(...ev);DG.set(code,{s:"espn",n:ev.length})}catch(e){if(!DG.has(code)||DG.get(code).s==="err")DG.set(code,{s:"err",n:0})}});
-  await loadTSDB(key,M,DG);
+  if(ESPNOK!==false)await pool(codes,5,async code=>{try{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;if(ESPNOK===null){ESPNOK=true;ONLINE=true;try{renderChromeAll()}catch(_){}}if(ONLINE===true)scheduleRender();const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);if(!ev.length&&(M.get(code)||[]).some(m=>m.src==="tsdb"))return;M.set(code,ev);logQ.push(...ev);DG.set(code,{s:"espn",n:ev.length})}catch(e){if(!DG.has(code)||DG.get(code).s==="err")DG.set(code,{s:"err",n:0})}});
+  const tsP=loadTSDB(key,M,DG).then(()=>{if(logQ.length){const q=logQ.splice(0);logMatches(q)}TBL.clear();if(ONLINE===true)scheduleRender()}).catch(()=>{});
+  if(ESPNOK===false)await tsP;
   if(ESPNOK===false)ok=[...M.values()].some(l=>l.length)?1:ok;
   if(ok)TBL.clear();if(logQ.length){const q=logQ.splice(0);logMatches(q)}return ok;
 }
@@ -1266,8 +1267,7 @@ var SRT={pl:{src:"Źródła danych",err:"bez danych",none:"brak meczów w obu ź
  en:{src:"Data sources",err:"no data",none:"no matches in either source",other:"Found on other days",collAll:"Collapse all",expAll:"Expand all",noHit:q=>`No “${q}” matches on this day.`},
  de:{src:"Datenquellen",err:"keine Daten",none:"keine Spiele in beiden Quellen",other:"An anderen Tagen gefunden",collAll:"Alle einklappen",expAll:"Alle ausklappen",noHit:q=>`Keine Spiele für „${q}“ an diesem Tag.`},
  es:{src:"Fuentes de datos",err:"sin datos",none:"sin partidos en ninguna fuente",other:"Encontrado en otros días",collAll:"Contraer todo",expAll:"Expandir todo",noHit:q=>`No hay partidos de «${q}» este día.`}};
-let weekT=0;function ensureWeek(){if(FEED||Date.now()-weekT<10*60e3)return;weekT=Date.now();const need=[-1,1,2,3,4,5].filter(o=>!SB.has(ymd(dayDate(o))));
-  (async()=>{for(const o of need){await loadDay(o);if(view==="today"&&$("#tq").value)renderTodayList()}})()}
+function ensureWeek(){}
 /* ---- Live ---- */
 function dlt(now,pre){const d=Math.round((now-pre)*100);return d?`<i class="${d>0?"up":"dn"}">${d>0?"▲":"▼"}${Math.abs(d)}</i>`:""}
 function lcard(m){const L=t(),p=liveFor(m),b=mfc(m),s=liveStats(m);
@@ -1441,21 +1441,24 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&ONLINE===
 /* ---- Init ---- */
 async function init(){loadFav();loadLog();try{const s=localStorage.getItem("skaner-lang");if(s&&I18N[s])lang=s;else{const n=(navigator.language||"pl").slice(0,2);if(I18N[n])lang=n}}catch(e){}
   setupPWA();renderChromeAll();const h=location.hash.slice(1);setView(VIEWS.includes(h)?h:"today",false);
-  await probe();
-  renderChromeAll();
-  await goOnline()}
+  await start()}
+async function start(){if(FEED)return;loadingDay=true;
+  const ok=await loadDay(0);                       /* ESPN first: sets ONLINE as soon as any league answers */
+  if(!ok&&ESPNOK!==true){ESPNOK=false;SB.delete(ymd(dayDate(0)));TST.clear();
+    try{await getJSON(`${TSDB}eventsday.php?d=${new Date().toISOString().slice(0,10)}&s=Soccer`,8000);ONLINE=true;await loadDay(0)}catch(e){ESPNOK=null;ONLINE=FEED?true:false}}
+  loadingDay=false;renderChromeAll();await goOnline()}
 const IN_CLAUDE=(()=>{try{return !!window.claude||window.top!==window.self||/claude/.test(location.hostname)}catch(e){return true}})();
 async function probe(){try{await getJSON(API+"eng.1/scoreboard",7000);ESPNOK=true;ONLINE=true;return}catch(e){}
   try{await getJSON(`${TSDB}eventsday.php?d=${new Date().toISOString().slice(0,10)}&s=Soccer`,7000);ESPNOK=false;ONLINE=true;return}catch(e){}
   ONLINE=!!FEED}
 let wentOnline=false;
 async function goOnline(){if(wentOnline)return;
-  if(ONLINE&&!FEED){wentOnline=true;loadingDay=true;renderCurrent();await loadDay(0);loadingDay=false;lastRef=new Date();recordHist();renderCurrent();
+  if(ONLINE&&!FEED){wentOnline=true;lastRef=new Date();recordHist();renderCurrent();
     const M=SB.get(ymd(dayDate(0)));await pool([...M.entries()].filter(([c,l])=>l.length&&LEAGUES[c]).sort((a,b)=>lgRank(a[0])-lgRank(b[0])).map(([c])=>c),3,loadStand);
     logMatches(dayMatches(0));if(ESPNOK)settleOld();loadDay(1).then(()=>{if(view==='today'&&dayOff===1)renderCurrent()});loadDay(-1).then(()=>{logMatches(dayMatches(-1));if(view==='journal')renderJournal()})}
   else renderCurrent()}
 /* offline outside Claude: retry every 45 s (network may come back) */
-setInterval(async()=>{if(ONLINE!==false||IN_CLAUDE||document.hidden)return;await probe();if(ONLINE){renderChromeAll();await goOnline()}},45e3);
+setInterval(async()=>{if(ONLINE!==false||IN_CLAUDE||document.hidden||loadingDay)return;ESPNOK=null;await start()},45e3);
 
 init();
 
