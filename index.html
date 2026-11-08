@@ -539,6 +539,10 @@ i.up{color:var(--good)}i.dn{color:var(--bad)}
 .odh{margin:10px 4px 6px;font-size:13px;font-weight:600;color:var(--muted);text-transform:capitalize}
 button.jday{width:100%;background:none;border:0;border-bottom:1px solid var(--line);font:inherit;cursor:pointer;text-align:left}
 button.jday>span:first-child{display:flex;align-items:center;gap:4px}
+
+.diag{margin:18px 4px 8px;font-size:12px;color:var(--muted)}
+.diag summary{cursor:pointer;padding:6px 0}
+.diag p{margin:6px 0;line-height:1.5}
 </style>
 <div class="wrap">
   <header class="topbar">
@@ -925,9 +929,41 @@ function parseEvent(ev,code){
 async function loadDay(off,only){if(FEED)return 0;
   const key=ymd(dayDate(off));if(!SB.has(key))SB.set(key,new Map());const M=SB.get(key);
   const codes=only||[...Object.keys(LEAGUES).filter(k=>LEAGUES[k].espn),...Object.keys(CUPS)];let ok=0;
-  await pool(codes,8,async code=>{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);M.set(code,ev);logQ.push(...ev)});
+  if(!DIAG.has(key))DIAG.set(key,new Map());const DG=DIAG.get(key);
+  await pool(codes,8,async code=>{try{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);if(!ev.length&&(M.get(code)||[]).some(m=>m.src==="tsdb"))return;M.set(code,ev);logQ.push(...ev);DG.set(code,{s:"espn",n:ev.length})}catch(e){if(!DG.has(code)||DG.get(code).s==="err")DG.set(code,{s:"err",n:0})}});
+  await loadTSDB(key,M,DG);
   if(ok)TBL.clear();if(logQ.length){const q=logQ.splice(0);logMatches(q)}return ok;
 }
+/* ---- Backup source: TheSportsDB (free API) for leagues ESPN doesn't return ---- */
+const DIAG=new Map();const TSDB="https://www.thesportsdb.com/api/v1/json/3/";
+const TSRULE=[["l1en",/english league (1|one)\b/],["l2en",/english league (2|two)\b/],["ch",/english (league )?championship/],["pl",/english premier/],
+ ["pl1",/polish (i|1)\.? liga|polish first league/],["ek",/polish|ekstraklasa/],["l2",/spanish (la ?liga 2|segunda|la liga hypermotion)/],["ll",/spanish la ?liga|spanish primera/],
+ ["sb",/italian serie b/],["sa",/italian serie a/],["d3",/german 3\.? ?liga/],["b2",/german 2\.? ?bundesliga/],["bl",/german bundesliga/],["f2",/french ligue 2/],["l1",/french ligue 1/],
+ ["nl2",/dutch eerste/],["nl",/dutch eredivisie/],["pt",/portuguese (primeira|liga portugal)/],["sc",/scottish prem/],["br",/brazil.*serie a/],["mx",/mexic/],["sp",/saudi/],["tr",/turkish super/],
+ ["be",/belgian (pro|first division a|jupiler)/],["at2",/austrian 2\.? ?liga/],["at",/austrian (football )?bundesliga/],["cz",/czech (first|1)/],["sk",/slovak/],["hu",/hungarian/],["ro",/romanian liga (i|1)\b/],
+ ["si",/sloven/],["hr",/croatian (first|hnl|supersport)/],["rs",/serbian super/],["ba",/bosnia/],["me",/montenegr/],["mk",/macedonian/],["al",/albanian/],["bg",/bulgarian (first|parva)/],
+ ["gr",/greek super/],["cy",/cypriot first/],["ua",/ukrainian premier/],["by",/belarus/],["md",/moldov/],["mt",/maltese prem/],["dk",/danish superliga/],["no",/norwegian eliteserien/],
+ ["se",/swedish allsvenskan/],["ru",/russian (football )?premier/],["il",/israeli premier/],["sui2",/swiss challenge/],["sui",/swiss super/],
+ ["cl",/uefa champions/],["el",/uefa europa league/],["ecl",/uefa (europa )?conference/]];
+const TSNAME={ek:"Polish_Ekstraklasa",pl1:"Polish_I_Liga",hr:"Croatian_First_Football_League",rs:"Serbian_Super_Liga",ba:"Bosnian_Premier_Liga",me:"Montenegrin_First_League",mk:"Macedonian_First_League",
+ al:"Albanian_Superliga",by:"Belarus_Vyscha_Liga",md:"Moldovan_National_Division",mt:"Maltese_Premier_League",at2:"Austrian_2._Liga",sui2:"Swiss_Challenge_League",si:"Slovenian_PrvaLiga",sk:"Slovak_Super_Liga",bg:"Bulgarian_First_League",cy:"Cypriot_First_Division",ua:"Ukrainian_Premier_League"};
+function tsCode(e){const n=String(e.strLeague||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");for(const [c,re] of TSRULE)if(re.test(n))return c;return null}
+function parseTS(e,code){const raw=e.strTimestamp||(e.dateEvent&&e.strTime?e.dateEvent+"T"+e.strTime:e.dateEvent);if(!raw)return null;const dt=new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(raw)?raw:raw+"Z");if(isNaN(dt))return null;
+  const s=String(e.strStatus||"").toUpperCase(),hs=parseInt(e.intHomeScore),as=parseInt(e.intAwayScore);
+  const off=/POSTP|PST|CANC|ABD|ABAN|SUSP/.test(s),post=/^(FT|AET|PEN|AP)$|FINISH|ENDED/.test(s)||(!s&&!isNaN(hs)&&Date.now()-dt>130*60e3),live=/^(1H|2H|HT|ET|BT|P|LIVE|INPLAY)$|HALF/.test(s);
+  const state=off?"pre":post?"post":live?"in":"pre",ht=/^HT$|HALF/.test(s);
+  const pm=parseInt(e.strProgress);const minute=state==="post"?90:state==="in"?(ht?45:(pm>0?pm:Math.min(90,Math.max(1,Math.round((Date.now()-dt)/60e3-((Date.now()-dt)/60e3>60?15:0)))))):0;
+  return {id:"t-"+e.idEvent,code,slug:null,date:dt,state,name:off?"STATUS_POSTPONED":ht?"STATUS_HALFTIME":"",clock:state==="in"?minute+"'":"",minute,
+    home:{id:"",name:e.strHomeTeam||"?",logo:e.strHomeTeamBadge?e.strHomeTeamBadge+"/tiny":null,score:isNaN(hs)?0:hs},away:{id:"",name:e.strAwayTeam||"?",logo:e.strAwayTeamBadge?e.strAwayTeamBadge+"/tiny":null,score:isNaN(as)?0:as},
+    odds:null,stats:null,details:[],reds:[0,0],venue:e.strVenue||"",src:"tsdb"}}
+const TST=new Map();async function loadTSDB(key,M,DG){if(Date.now()-(TST.get(key)||0)<55e3)return;TST.set(key,Date.now());const day=key.slice(0,4)+"-"+key.slice(4,6)+"-"+key.slice(6,8);
+  const missing=()=>[...Object.keys(LEAGUES),...Object.keys(CUPS)].filter(c=>!(M.get(c)||[]).length);if(!missing().length)return;
+  const add=list=>{const by={};(list||[]).forEach(e=>{const c=tsCode(e);if(!c||(M.get(c)||[]).some(m=>!m.src))return;const m=parseTS(e,c);if(m)(by[c]=by[c]||[]).push(m)});
+    Object.entries(by).forEach(([c,ms])=>{const old=(M.get(c)||[]).filter(m=>m.src==="tsdb"&&!ms.some(x=>x.id===m.id));M.set(c,[...ms,...old]);logQ.push(...ms);DG.set(c,{s:"tsdb",n:ms.length})})};
+  try{const j=await getJSON(`${TSDB}eventsday.php?d=${day}&s=Soccer`,9000);add(j.events)}catch(e){}
+  const want=missing().filter(c=>TSNAME[c]&&(["ek","hr","rs","pl1"].includes(c)||FAV.leagues.has(c)));
+  await pool(want,2,async c=>{const j=await getJSON(`${TSDB}eventsday.php?d=${day}&l=${TSNAME[c]}`,9000);add(j.events)});
+  missing().forEach(c=>{if(!DG.has(c))DG.set(c,{s:"none",n:0})})}
 async function loadStand(code){const s=slugOf(code);if(ONLINE!==true||FEED||!s||CUPS[code])return;const tt=STANDT.get(code);if(tt&&Date.now()-tt<20*60e3)return;STANDT.set(code,Date.now());
   try{const j=await getJSON(`${API2}${s}/standings`);let best=null;const walk=n=>{if(!n)return;const e=n.standings?.entries;if(e&&(!best||e.length>best.length))best=e;(n.children||[]).forEach(walk)};walk(j);
     if(!best||best.length<4)return;
@@ -1213,14 +1249,18 @@ function renderTodayList(){const L=t(),box=$("#todayList"),q=norm($("#tq").value
     other=days.map(o=>{const ms=hits.filter(h=>h[0]===o).map(h=>h[1]),d=dayDate(o);return `<div class="odh">${esc(o===-1?L.day.yest:o===0?L.day.today:o===1?L.day.tom:d.toLocaleDateString(L.dateFmt,{weekday:"long"}))} · ${d.toLocaleDateString(L.dateFmt,{day:"numeric",month:"short"})}</div>${grouped(ms,"d"+o)}`}).join("");
     if(other)other=`<div class="odt">${S2.other}</div>`+other}
   const tools=list.length>1&&!qw.length?`<div class="colbar"><button type="button" class="lnk" id="collAll">${S2.collAll}</button><button type="button" class="lnk" id="expAll">${S2.expAll}</button></div>`:"";
-  box.innerHTML=(list.length?tools+grouped(list):`<div class="empty">${qw.length?S2.noHit(esc($("#tq").value)):all.length?L.noneFilter:L.none}</div>`)+other;
+  let diag="";const DG=DIAG.get(ymd(dayDate(dayOff)));
+  if(ONLINE===true&&!FEED&&DG){const e=[...DG.entries()],cnt=s=>e.filter(x=>x[1].s===s).length,lab=c=>esc(lgMeta(c).name);
+    const row=(s,t)=>{const l=e.filter(x=>x[1].s===s);return l.length?`<p><b>${t}</b> ${l.map(([c,v])=>`${lab(c)}${v.n?` (${v.n})`:""}`).join(", ")}</p>`:""};
+    diag=`<details class="diag"><summary>${S2.src}: ESPN ${cnt("espn")} · TheSportsDB ${cnt("tsdb")} · ${S2.err} ${cnt("err")+cnt("none")}</summary>${row("espn","ESPN:")}${row("tsdb","TheSportsDB:")}${row("err",S2.err+" (ESPN):")}${row("none",S2.none+":")}</details>`}
+  box.innerHTML=(list.length?tools+grouped(list):`<div class="empty">${qw.length?S2.noHit(esc($("#tq").value)):all.length?L.noneFilter:L.none}</div>`)+other+diag;
 
 }
 
-var SRT={pl:{other:"Znalezione w inne dni",collAll:"Zwiń wszystkie",expAll:"Rozwiń wszystkie",noHit:q=>`Brak meczów „${q}” w tym dniu.`},
- en:{other:"Found on other days",collAll:"Collapse all",expAll:"Expand all",noHit:q=>`No “${q}” matches on this day.`},
- de:{other:"An anderen Tagen gefunden",collAll:"Alle einklappen",expAll:"Alle ausklappen",noHit:q=>`Keine Spiele für „${q}“ an diesem Tag.`},
- es:{other:"Encontrado en otros días",collAll:"Contraer todo",expAll:"Expandir todo",noHit:q=>`No hay partidos de «${q}» este día.`}};
+var SRT={pl:{src:"Źródła danych",err:"bez danych",none:"brak meczów w obu źródłach",other:"Znalezione w inne dni",collAll:"Zwiń wszystkie",expAll:"Rozwiń wszystkie",noHit:q=>`Brak meczów „${q}” w tym dniu.`},
+ en:{src:"Data sources",err:"no data",none:"no matches in either source",other:"Found on other days",collAll:"Collapse all",expAll:"Expand all",noHit:q=>`No “${q}” matches on this day.`},
+ de:{src:"Datenquellen",err:"keine Daten",none:"keine Spiele in beiden Quellen",other:"An anderen Tagen gefunden",collAll:"Alle einklappen",expAll:"Alle ausklappen",noHit:q=>`Keine Spiele für „${q}“ an diesem Tag.`},
+ es:{src:"Fuentes de datos",err:"sin datos",none:"sin partidos en ninguna fuente",other:"Encontrado en otros días",collAll:"Contraer todo",expAll:"Expandir todo",noHit:q=>`No hay partidos de «${q}» este día.`}};
 let weekT=0;function ensureWeek(){if(FEED||Date.now()-weekT<10*60e3)return;weekT=Date.now();const need=[-1,1,2,3,4,5].filter(o=>!SB.has(ymd(dayDate(o))));
   (async()=>{for(const o of need){await loadDay(o);if(view==="today"&&$("#tq").value)renderTodayList()}})()}
 /* ---- Live ---- */
