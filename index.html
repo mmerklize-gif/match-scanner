@@ -527,6 +527,18 @@ i.up{color:var(--good)}i.dn{color:var(--bad)}
 .jl.y .jc{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,transparent)}.jl.n .jc{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
 .jfoot{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:12px;font-size:12.5px;color:var(--muted)}
 .lnk{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;font:inherit;cursor:pointer}.lnk.danger{color:var(--bad)}
+
+/* collapsible groups */
+.lgh[data-coll]{cursor:pointer;user-select:none}
+.chev{display:inline-block;width:14px;color:var(--muted);font-size:12px;font-style:normal;transition:transform .15s}
+.lgsec.coll .chev,.jsec.coll .chev{transform:rotate(-90deg)}
+.lgsec.coll .mlist,.jsec.coll .jbody{display:none}
+.lgc{margin-left:auto;font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.colbar{display:flex;gap:16px;justify-content:flex-end;padding:0 4px 8px;font-size:12.5px}
+.odt{margin:18px 4px 6px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--gold)}
+.odh{margin:10px 4px 6px;font-size:13px;font-weight:600;color:var(--muted);text-transform:capitalize}
+button.jday{width:100%;background:none;border:0;border-bottom:1px solid var(--line);font:inherit;cursor:pointer;text-align:left}
+button.jday>span:first-child{display:flex;align-items:center;gap:4px}
 </style>
 <div class="wrap">
   <header class="topbar">
@@ -1104,7 +1116,7 @@ var JS={pl:{hit:"Trafione",miss:"Nietrafione",wait:"Czeka na wynik",all:"Wszystk
  en:{hit:"Won",miss:"Lost",wait:"Waiting for result",all:"All",pick:"Pick",draw:"Draw",acc:(h,n)=>`${h} of ${n} picks won`,none:"No matches in this period.",intro:"The app saves its pick before every match and checks after full time whether it won."},
  de:{hit:"Getroffen",miss:"Daneben",wait:"Wartet auf Ergebnis",all:"Alle",pick:"Tipp",draw:"Remis",acc:(h,n)=>`${h} von ${n} Tipps getroffen`,none:"Keine Spiele in diesem Zeitraum.",intro:"Die App speichert vor jedem Spiel ihren Tipp und prüft nach Abpfiff, ob er getroffen hat."},
  es:{hit:"Acertados",miss:"Fallados",wait:"Esperando resultado",all:"Todos",pick:"Pronóstico",draw:"Empate",acc:(h,n)=>`${h} de ${n} pronósticos acertados`,none:"No hay partidos en este periodo.",intro:"La app guarda su pronóstico antes de cada partido y comprueba al final si acertó."}};
-let jFilt="all";
+let jFilt="all";let JC=new Set();try{JC=new Set(JSON.parse(localStorage.getItem("skaner-jcoll")||"[]"))}catch(e){}
 const jPick=e=>pickOf(e.p[0],e.p[1],e.p[2]);
 const jOk=e=>e.r?pickHit(jPick(e),e.r):null;
 function renderJournal(){const J=t().jr,S=JS[lang]||JS.en,box=$("#journalBody");const now=Date.now();
@@ -1121,11 +1133,12 @@ function renderJournal(){const J=t().jr,S=JS[lang]||JS.en,box=$("#journalBody");
     ${done.length?`<div class="jscore"><span class="y">✓ ${hits.length}</span><span class="n">✗ ${miss.length}</span><b>${pc}%</b></div>
     <div class="jbig" aria-hidden="true"><i style="width:${pc}%"></i></div>
     <div class="jtop">${seg("jf",jFilt,[["all",S.all],["hit","✓ "+S.hit],["miss","✗ "+S.miss]])}</div>`:`<div class="empty">${all.length?S.none:(ONLINE===true?J.emptyOn:J.emptyOff)}</div>`}
-    ${pending.length?`<div class="jday"><span>⏳ ${S.wait}</span><span>${pending.length}</span></div>${pending.slice(0,30).map(jrow).join("")}`:""}
-    ${byDay.map(g=>`<div class="jday"><span>${fmtDate(g.d,{weekday:"short",day:"numeric",month:"short"})}</span><span>${g.l.filter(jOk).length}/${g.l.length}</span></div>${g.l.map(jrow).join("")}`).join("")}
+    ${pending.length?jsec("wait",`⏳ ${S.wait}`,pending.length,pending.slice(0,30).map(jrow).join("")):""}
+    ${byDay.map(g=>jsec(g.k.replace(/\s/g,"-"),fmtDate(g.d,{weekday:"short",day:"numeric",month:"short"}),`${g.l.filter(jOk).length}/${g.l.length}`,g.l.map(jrow).join(""))).join("")}
     <div class="jfoot"><button type="button" class="lnk" id="jCopy">${J.copy}</button>
     ${jConfirm?`<span>${J.sure}</span><button type="button" class="lnk danger" id="jClearYes">${J.yes}</button><button type="button" class="lnk" id="jClearNo">${J.no}</button>`:`<button type="button" class="lnk" id="jClear">${J.clear}</button>`}<span id="jMsg"></span></div>
   </section>`}
+function jsec(k,lab,cnt,body){const c=JC.has(k);return `<div class="jsec${c?" coll":""}"><button type="button" class="jday" data-jc="${esc(k)}" aria-expanded="${!c}"><span><i class="chev" aria-hidden="true">▾</i>${lab}</span><span>${cnt}</span></button><div class="jbody">${body}</div></div>`}
 function jrow(e){const pk=jPick(e),ok=jOk(e),code=pk.o.map(i=>"1X2"[i]).join("");
   return `<div class="jl ${ok===null?"pd":ok?"y":"n"}"><span class="ji">${ok===null?"•":ok?"✓":"✗"}</span>
     <span class="jt2">${flagSvg(e.c)}<span class="jh">${esc(e.h)}</span><b>${e.s||fmtTime(new Date(e.d))}</b><span class="ja">${esc(e.a)}</span></span>
@@ -1135,6 +1148,7 @@ function jCSV(){const rows=[["id","league","date","home","away","p1","pX","p2","
   return rows.map(r=>r.map(v=>{const s=String(v??"");return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s}).join(",")).join("\n")}
 document.addEventListener("click",async e=>{const T=e.target;
   const jp=T.closest("[data-jp]");if(jp){jPeriod=+jp.dataset.jp;renderJournal();return}
+  const jc=T.closest("[data-jc]");if(jc){const k=jc.dataset.jc;JC.has(k)?JC.delete(k):JC.add(k);try{localStorage.setItem("skaner-jcoll",JSON.stringify([...JC].slice(-60)))}catch(_){}const sc=jc.closest(".jsec");sc.classList.toggle("coll",JC.has(k));jc.setAttribute("aria-expanded",!JC.has(k));return}
   const jf=T.closest("[data-jf]");if(jf){jFilt=jf.dataset.jf;renderJournal();return}
   if(T.closest("#jClear")){jConfirm=true;renderJournal();return}
   if(T.closest("#jClearNo")){jConfirm=false;renderJournal();return}
@@ -1159,9 +1173,20 @@ function tline(tm,m,s){const win=m.state==="post"&&((s==="h"&&m.home.score>m.awa
   return `<span class="mt ${win?"win":""}">${logoImg(tm)}<span class="nm">${esc(tm.name)}</span>${isFavT(tm.name)?'<span class="fs" aria-hidden="true">★</span>':""}${m.state!=="pre"&&!m.snap?`<b class="msc">${tm.score}</b>`:""}</span>`}
 function mrow(m){return `<button type="button" class="mrow ${m.state}${curM&&curM.id===m.id?" sel":""}" data-mid="${esc(m.id)}">${statusHTML(m)}<span class="mteams">${tline(m.home,m,"h")}${tline(m.away,m,"a")}</span><span class="mp ${m.state==="in"?"lv":""}">${rowProbs(m)}</span></button>`}
 const lgRank=c=>(FAV.leagues.has(c)?0:1000)+(TOP.includes(c)?TOP.indexOf(c):100);
-function grouped(list){const g={};list.forEach(m=>(g[m.code]=g[m.code]||[]).push(m));
+/* collapsed league groups (remembered on this device) */
+let COLL=new Set();try{COLL=new Set(JSON.parse(localStorage.getItem("skaner-coll")||"[]"))}catch(e){}
+function saveColl(){try{localStorage.setItem("skaner-coll",JSON.stringify([...COLL]))}catch(e){}}
+/* typo-tolerant search: every typed word must match a word of the teams/league (prefix or 1-2 typos) */
+function lev(a,b){if(Math.abs(a.length-b.length)>2)return 9;const d=[];for(let i=0;i<=a.length;i++){d[i]=[i];for(let j=1;j<=b.length;j++)d[i][j]=i?0:j}
+  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++){const c=a[i-1]===b[j-1]?0:1;d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c);if(i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])d[i][j]=Math.min(d[i][j],d[i-2][j-2]+1)}return d[a.length][b.length]}
+const sw=s=>norm(s).split(" ").filter(Boolean);
+function wordHit(q,w){if(w.startsWith(q)||(q.length>=4&&w.includes(q)))return true;if(q.length<4)return false;const tol=q.length>=7?2:1;
+  return lev(q,w)<=tol||(w.length>q.length&&lev(q,w.slice(0,q.length))<=tol)}
+function mMatch(m,qw){const ws=[...sw(m.home.name),...sw(m.away.name),...sw(lgMeta(m.code).name),...sw(country(lgMeta(m.code).cc))];return qw.every(q=>ws.some(w=>wordHit(q,w)))}
+function grouped(list,keyPfx=""){const g={};list.forEach(m=>(g[m.code]=g[m.code]||[]).push(m));
   return Object.keys(g).sort((a,b)=>lgRank(a)-lgRank(b)||lgMeta(a).name.localeCompare(lgMeta(b).name)).map(code=>{const ms=g[code].sort((a,b)=>(a.state==="in"?0:1)-(b.state==="in"?0:1)||a.date-b.date);
-    return `<section class="lgsec"><header class="lgh">${flagSvg(code)}<span class="lgn"><b>${esc(lgMeta(code).name)}</b><small>${esc(country(lgMeta(code).cc))}</small></span>${ms.some(m=>m.state==="in")?'<span class="lvdot" aria-hidden="true"></span>':""}${lgStar(code)}</header><div class="mlist">${ms.map(mrow).join("")}</div></section>`}).join("")}
+    const ck=keyPfx+code,cl=!keyPfx&&COLL.has(code);
+    return `<section class="lgsec${cl?" coll":""}"><header class="lgh" data-coll="${keyPfx?"":code}" role="button" tabindex="0" aria-expanded="${!cl}"><span class="chev" aria-hidden="true">${keyPfx?"":"▾"}</span>${flagSvg(code)}<span class="lgn"><b>${esc(lgMeta(code).name)}</b><small>${esc(country(lgMeta(code).cc))}</small></span>${ms.some(m=>m.state==="in")?'<span class="lvdot" aria-hidden="true"></span>':""}<span class="lgc">${ms.length}</span>${lgStar(code)}</header><div class="mlist">${ms.map(mrow).join("")}</div></section>`}).join("")}
 
 /* ---- Today ---- */
 function renderTodayControls(){const L=t();
@@ -1173,18 +1198,31 @@ function renderTodayControls(){const L=t();
   $("#refreshBtn").textContent="⟳ "+L.refresh;$("#refreshBtn").hidden=ONLINE!==true;
   const ob=$("#offBanner");ob.hidden=ONLINE!==false;if(ONLINE===false)ob.innerHTML=`<b>${L.src.offTitle}</b><span>${L.src.offText(fmtDate(ASOF))}</span>`;
 }
-function renderTodayList(){const L=t(),box=$("#todayList"),q=norm($("#tq").value);
+function renderTodayList(){const L=t(),box=$("#todayList"),q=norm($("#tq").value),qw=q.split(" ").filter(Boolean);
   if(ONLINE===null||(ONLINE&&loadingDay&&!dayMatches().length)){box.innerHTML=`<div class="empty"><span class="spin" aria-hidden="true"></span>${ONLINE===null?L.src.checking:L.loading}</div>`;return}
   let all=dayMatches();const fav=m=>isFavT(m.home.name)||isFavT(m.away.name)||FAV.leagues.has(m.code);
   const cnt={all:all.length,live:all.filter(m=>m.state==="in").length,fav:all.filter(fav).length};
   Object.entries(cnt).forEach(([k,v])=>{const e=$("#cnt-"+k);if(e)e.textContent=v?` ${v}`:""});
   let list=all.filter(m=>filt==="all"||(filt==="live"?m.state==="in":fav(m)));
-  if(q)list=list.filter(m=>norm(m.home.name).includes(q)||norm(m.away.name).includes(q)||norm(lgMeta(m.code).name).includes(q));
+  if(qw.length)list=list.filter(m=>mMatch(m,qw));
   const done=all.filter(m=>m.state==="post"&&!isOff(m.name));let hit=0;done.forEach(m=>{const p=mfc(m),res=m.home.score>m.away.score?"H":m.home.score<m.away.score?"A":"X";if(pickHit(pickOf(p.H,p.X,p.A),res))hit++});
   $("#stline").innerHTML=ONLINE===true?`<span>${FEED?feedTxt():lastRef?L.refreshed(fmtTime(lastRef)):""}${dayOff===0&&!FEED?` · <span id="cd">${L.next(cdown)}</span>`:""}</span>${done.length?`<span class="acc">${L.acc(hit,done.length)}</span>`:""}`:`<span>${L.snapRound}</span>`;
-  box.innerHTML=list.length?grouped(list):`<div class="empty">${all.length?L.noneFilter:L.none}</div>`;
+  const S2=SRT[lang]||SRT.en;let other="";
+  if(qw.length&&ONLINE===true){ensureWeek();const hits=[];[-1,0,1,2,3,4,5].forEach(o=>{if(o===dayOff)return;dayMatches(o).filter(m=>mMatch(m,qw)).forEach(m=>hits.push([o,m]))});
+    const days=[...new Set(hits.map(h=>h[0]))].sort((a,b)=>a-b);
+    other=days.map(o=>{const ms=hits.filter(h=>h[0]===o).map(h=>h[1]),d=dayDate(o);return `<div class="odh">${esc(o===-1?L.day.yest:o===0?L.day.today:o===1?L.day.tom:d.toLocaleDateString(L.dateFmt,{weekday:"long"}))} · ${d.toLocaleDateString(L.dateFmt,{day:"numeric",month:"short"})}</div>${grouped(ms,"d"+o)}`}).join("");
+    if(other)other=`<div class="odt">${S2.other}</div>`+other}
+  const tools=list.length>1&&!qw.length?`<div class="colbar"><button type="button" class="lnk" id="collAll">${S2.collAll}</button><button type="button" class="lnk" id="expAll">${S2.expAll}</button></div>`:"";
+  box.innerHTML=(list.length?tools+grouped(list):`<div class="empty">${qw.length?S2.noHit(esc($("#tq").value)):all.length?L.noneFilter:L.none}</div>`)+other;
+
 }
 
+var SRT={pl:{other:"Znalezione w inne dni",collAll:"Zwiń wszystkie",expAll:"Rozwiń wszystkie",noHit:q=>`Brak meczów „${q}” w tym dniu.`},
+ en:{other:"Found on other days",collAll:"Collapse all",expAll:"Expand all",noHit:q=>`No “${q}” matches on this day.`},
+ de:{other:"An anderen Tagen gefunden",collAll:"Alle einklappen",expAll:"Alle ausklappen",noHit:q=>`Keine Spiele für „${q}“ an diesem Tag.`},
+ es:{other:"Encontrado en otros días",collAll:"Contraer todo",expAll:"Expandir todo",noHit:q=>`No hay partidos de «${q}» este día.`}};
+let weekT=0;function ensureWeek(){if(FEED||Date.now()-weekT<10*60e3)return;weekT=Date.now();const need=[-1,1,2,3,4,5].filter(o=>!SB.has(ymd(dayDate(o))));
+  (async()=>{for(const o of need){await loadDay(o);if(view==="today"&&$("#tq").value)renderTodayList()}})()}
 /* ---- Live ---- */
 function dlt(now,pre){const d=Math.round((now-pre)*100);return d?`<i class="${d>0?"up":"dn"}">${d>0?"▲":"▼"}${Math.abs(d)}</i>`:""}
 function lcard(m){const L=t(),p=liveFor(m),b=mfc(m),s=liveStats(m);
@@ -1333,6 +1371,9 @@ document.addEventListener("click",async e=>{const T=e.target;
   const tab=T.closest("[data-tab]");if(tab){setView(tab.dataset.tab);return}
   const st=T.closest(".star[data-team]");if(st){const k=st.dataset.team;FAV.teams.has(k)?FAV.teams.delete(k):FAV.teams.set(k,st.dataset.name||k);saveFav();renderCurrent();return}
   const sl=T.closest(".star[data-league]");if(sl){const c=sl.dataset.league;FAV.leagues.has(c)?FAV.leagues.delete(c):FAV.leagues.add(c);saveFav();renderCurrent();return}
+  const ch=T.closest("[data-coll]");if(ch&&ch.dataset.coll){const c=ch.dataset.coll;COLL.has(c)?COLL.delete(c):COLL.add(c);saveColl();const sec=ch.closest(".lgsec");sec.classList.toggle("coll",COLL.has(c));ch.setAttribute("aria-expanded",!COLL.has(c));return}
+  if(T.closest("#collAll")){dayMatches().forEach(m=>COLL.add(m.code));saveColl();renderTodayList();return}
+  if(T.closest("#expAll")){dayMatches().forEach(m=>COLL.delete(m.code));saveColl();renderTodayList();return}
   const mr=T.closest("[data-mid]");if(mr){openMatch(mr.dataset.mid);return}
   const lg=T.closest("[data-lg]");if(lg){viewLg=lg.dataset.lg;renderLgList();renderLgTable();loadStand(viewLg);if(innerWidth<900)$("#lgTable").scrollIntoView({behavior:"smooth",block:"start"});return}
   const gl=T.closest("[data-golg]");if(gl){viewLg=gl.dataset.golg;if(CUPS[viewLg]){filt="all";setView("today");return}setView("leagues");return}
