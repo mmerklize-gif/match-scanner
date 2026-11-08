@@ -1088,8 +1088,10 @@ function logMatches(list){if(ONLINE!==true)return;let ch=false;const now=Date.no
   list.forEach(m=>{if(!m||m.snap||isOff(m.name))return;const e=LOG[m.id];
     if(m.state==="pre"&&m.date.getTime()>now-5*60e3){const r=mfc(m);
       LOG[m.id]={id:m.id,c:m.code,d:m.date.toISOString(),h:m.home.name,a:m.away.name,p:[r3(r.H),r3(r.X),r3(r.A)],m:r.model?[r3(r.model.H),r3(r.model.X),r3(r.model.A)]:null,k:r.market?[r3(r.market.H),r3(r.market.X),r3(r.market.A)]:null,cf:r.conf,md:r.mode,r:null,s:null,u:now};ch=true}
+    else if(!e&&m.state==="post"&&now-m.date.getTime()<3*864e5){const r=mfc(m);/* finished before the app saw it: log with the pre-match forecast */
+      LOG[m.id]={id:m.id,c:m.code,d:m.date.toISOString(),h:m.home.name,a:m.away.name,p:[r3(r.H),r3(r.X),r3(r.A)],m:null,k:null,cf:r.conf,md:r.mode,r:m.home.score>m.away.score?"H":m.home.score<m.away.score?"A":"X",s:m.home.score+":"+m.away.score,u:now,lt:1};ch=true}
     else if(e&&!e.r&&m.state==="post"){e.r=m.home.score>m.away.score?"H":m.home.score<m.away.score?"A":"X";e.s=m.home.score+":"+m.away.score;ch=true}});
-  if(ch)saveLog()}
+  if(ch){saveLog();if(typeof view!=="undefined"&&view==="journal")scheduleRender()}}
 async function settleOld(){if(ONLINE!==true||FEED)return;const now=Date.now(),need={};
   Object.values(LOG).forEach(e=>{if(e.r||!e.d)return;const t0=new Date(e.d).getTime();if(now-t0<2.2*3600e3||now-t0>10*864e5)return;const d=new Date(e.d),key=ymd(d);(need[key]=need[key]||new Set()).add(e.c)});
   const keys=Object.keys(need);if(!keys.length)return;
@@ -1357,7 +1359,7 @@ async function init(){loadFav();loadLog();try{const s=localStorage.getItem("skan
   renderChromeAll();
   if(ONLINE&&!FEED){loadingDay=true;renderCurrent();await loadDay(0);loadingDay=false;lastRef=new Date();recordHist();renderCurrent();
     const M=SB.get(ymd(dayDate(0)));await pool([...M.entries()].filter(([c,l])=>l.length&&LEAGUES[c]).sort((a,b)=>lgRank(a[0])-lgRank(b[0])).map(([c])=>c),3,loadStand);
-    logMatches(dayMatches(0));settleOld();loadDay(1).then(()=>{if(view==='today'&&dayOff===1)renderCurrent()})}
+    logMatches(dayMatches(0));settleOld();loadDay(1).then(()=>{if(view==='today'&&dayOff===1)renderCurrent()});loadDay(-1).then(()=>{logMatches(dayMatches(-1));if(view==='journal')renderJournal()})}
   else renderCurrent()}
 init();
 
