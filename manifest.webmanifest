@@ -1,13 +1,13 @@
 {
- "name": "Skaner Meczów",
- "short_name": "Skaner",
- "description": "Analiza meczów 51 lig: szanse 1X2, xG, forma i mentalność.",
+ "name": "Match Scanner",
+ "short_name": "Match Scanner",
+ "description": "Match analysis for 51 leagues: 1X2 odds, xG, form and mentality.",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "background_color": "#0e1420",
  "theme_color": "#0e1420",
- "lang": "pl",
+ "lang": "en",
  "icons": [
   {
    "src": "icon-192.png",
