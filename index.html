@@ -867,7 +867,7 @@ function lgStar(code){const on=FAV.leagues.has(code),L=t();return `<button class
 // L = {name, zones:{top,rel}, teams:[[name,P,W,D,L,GF,GA,Pts,form,id?,logo?]]}
 const TBL=new Map();
 function buildTable(L){
-  const T=L.teams.map(r=>({name:r[0],P:Math.max(1,r[1]),W:r[2],D:r[3],L:r[4],GF:r[5],GA:r[6],Pts:r[7],form:[...(r[8]||"")].filter(c=>"WDL".includes(c)).slice(-5),id:r[9]||null,logo:r[10]||null}));
+  const T=L.teams.map(r=>({name:r[0],P:Math.max(1,r[1]),W:r[2],D:r[3],L:r[4],GF:r[5],GA:r[6],Pts:r[7],form:[...(r[8]||"")].filter(c=>"WDL".includes(c)).slice(-5),id:r[9]||null,logo:r[10]||null,sp:Array.isArray(r[11])?r[11]:null}));
   T.sort((a,b)=>b.Pts-a.Pts||(b.GF-b.GA)-(a.GF-a.GA)||b.GF-a.GF);
   const n=T.length, sumP=T.reduce((s,x)=>s+x.P,0)||1, avg=Math.max(.6,T.reduce((s,x)=>s+x.GF,0)/sumP);
   const PTS={W:3,D:1,L:0}, w=[1,1.2,1.4,1.6,1.8], z=L.zones||{top:4,rel:3};
@@ -886,8 +886,13 @@ function buildTable(L){
     x.formR=Math.round(x.formScore*100);x.posR=n>1?Math.round(100*(n-x.pos)/(n-1)):50;x.ppgR=Math.round(x.ppg/3*100);
   });
   T.forEach(x=>x.power=Math.round(.3*x.attackR+.3*x.defR+.2*x.formR+.2*x.mental));
+  /* home/away strengths when the table has split records (rebuilt from results) */
+  let split=false,hAvg=0,aAvg=0;const sp=T.filter(x=>x.sp&&x.sp[0]+x.sp[6]>=4);
+  if(sp.length>=.7*n){const sh=sp.reduce((s,x)=>s+x.sp[0],0),sa=sp.reduce((s,x)=>s+x.sp[6],0);hAvg=sp.reduce((s,x)=>s+x.sp[4],0)/(sh||1);aAvg=sp.reduce((s,x)=>s+x.sp[10],0)/(sa||1);
+    if(sh>=n&&sa>=n&&hAvg>.4&&aAvg>.3){split=true;const k=4;T.forEach(x=>{const s=x.sp||[0,0,0,0,0,0,0,0,0,0,0,0];
+      x.attH=(s[4]+k*hAvg*x.att)/(s[0]+k)/hAvg;x.defH=(s[5]+k*aAvg*x.def)/(s[0]+k)/aAvg;x.attA=(s[10]+k*aAvg*x.att)/(s[6]+k)/aAvg;x.defA=(s[11]+k*hAvg*x.def)/(s[6]+k)/hAvg})}}
   const by={},byId={},byNorm={};T.forEach(x=>{by[x.name]=x;if(x.id)byId[x.id]=x;byNorm[norm(x.name)]=x});
-  return {L,T,n,avg,by,byId,byNorm};
+  return {L,T,n,avg,by,byId,byNorm,split,hAvg,aAvg};
 }
 // table for a league code: live ESPN standings when loaded, else built-in
 function getTable(code){
@@ -914,6 +919,8 @@ function grid(lh,la){const rho=-.07,M=9,g=[];let tot=0;
   for(let i=0;i<M;i++)for(let j=0;j<M;j++){const p=g[i][j]/=tot;if(i>j)H+=p;else if(i==j)X+=p;else A+=p;if(i+j>2)O+=p;if(i&&j)B+=p;list.push({i,j,p})}
   list.sort((x,y)=>y.p-x.p);return {lh,la,H,X,A,O,B,g,top:list.slice(0,6)}}
 function modelLambdas(D,h,a){
+  if(D.split&&h.attH&&a.attA){const mh=Math.exp(.004*(h.mental-a.mental))*Math.pow((h.ppg+1)/(a.ppg+1),.15),ma=Math.exp(.004*(a.mental-h.mental))*Math.pow((a.ppg+1)/(h.ppg+1),.15);
+    return [D.hAvg*h.attH*a.defA*mh,D.aAvg*a.attA*h.defH*ma]}   /* league's real home/away scoring + each team's home/away form */
   return [D.avg*h.att*a.def*1.13*Math.exp(.004*(h.mental-a.mental))*Math.pow((h.ppg+1)/(a.ppg+1),.15),
           D.avg*a.att*h.def*.9*Math.exp(.004*(a.mental-h.mental))*Math.pow((a.ppg+1)/(h.ppg+1),.15)]}
 const FITC=new Map();
@@ -946,7 +953,7 @@ function forecast(D,h,a,odds,wf){
   let model=null,market=null,lh,la,mode;
   if(D&&h&&a){const [mh,ma]=modelLambdas(D,h,a);const g=grid(mh,ma);model={...KAL(g),lh:mh,la:ma}}
   if(odds&&odds.H){market={H:odds.H,X:odds.X,A:odds.A,provider:odds.provider,dec:odds.dec||[1/odds.H,1/odds.X,1/odds.A]}}
-  if(model&&market){const [kh,ka]=fitLambdas(market);lh=Math.pow(model.lh,.45)*Math.pow(kh,.55);la=Math.pow(model.la,.45)*Math.pow(ka,.55);mode="blend"}
+  if(model&&market){const [kh,ka]=fitLambdas(market);lh=Math.pow(model.lh,.3)*Math.pow(kh,.7);la=Math.pow(model.la,.3)*Math.pow(ka,.7);mode="blend"}
   else if(model){lh=model.lh;la=model.la;mode="model"}
   else if(market){[lh,la]=fitLambdas(market);mode="market"}
   else{lh=1.45;la=1.15;mode="none"}
@@ -1102,7 +1109,23 @@ function loadTSRounds(){if(tsRun||Date.now()-tsRunT<60e3)return tsRun;tsRunT=Dat
         TSR[c]=r;tsKeep();tsPut(c,ev)}
       else if(ev&&!ev.length&&!TSR[c]){const nx=await tsRound(c,r+1);if(nx&&nx.length){TSR[c]=r+1;tsKeep();tsPut(c,nx)}}
       if(logQ.length){const q=logQ.splice(0);logMatches(q)}TBL.clear();if(ONLINE===true)scheduleRender()}catch(e){}}
-    tsRun=null})();return tsRun}
+    tsRun=null;tsTableWant("ek")})();return tsRun}
+/* ---- 1: up-to-date table for TheSportsDB leagues, rebuilt from every finished match of the season ---- */
+const TSTW=new Set();let tsTabRun=null;
+function tsTableWant(c){if(ONLINE!==true||IN_CLAUDE_SAFE()||STAND.has(c)||TSTW.has(c)||!(TSID[c]||TSCC[c])||(LEAGUES[c]&&LEAGUES[c].espn&&!ESPNDEAD.has(c)))return;TSTW.add(c);
+  tsTabRun=(tsTabRun||Promise.resolve()).then(()=>tsTable(c)).catch(()=>{})}
+function IN_CLAUDE_SAFE(){try{return typeof IN_CLAUDE!=="undefined"&&IN_CLAUDE}catch(e){return false}}
+async function tsTable(c){if(tsRun)await tsRun;const R=TSR[c]||tsGuessRound(c);if(R<3)return;const evs=new Map();
+  for(let r=1;r<=R;r++){const l=await tsRound(c,r);(l||[]).forEach(e=>{if(e.idEvent)evs.set(e.idEvent,e)})}
+  const T=new Map(),row=(n,id,logo)=>{const k=norm(n);if(!T.has(k))T.set(k,{n,id,logo,P:0,W:0,D:0,L:0,GF:0,GA:0,f:[],sp:[0,0,0,0,0,0,0,0,0,0,0,0]});const x=T.get(k);if(!x.logo&&logo)x.logo=logo;return x};
+  const done=[...evs.values()].filter(e=>/^(FT|AET|PEN|AP)$|FINISH|ENDED/i.test(e.strStatus||"")&&!isNaN(parseInt(e.intHomeScore))&&!isNaN(parseInt(e.intAwayScore))).sort((a,b)=>tsDate(a)-tsDate(b));
+  done.forEach(e=>{const hs=+e.intHomeScore,as=+e.intAwayScore,H=row(e.strHomeTeam,e.idHomeTeam,e.strHomeTeamBadge?e.strHomeTeamBadge+"/tiny":null),A=row(e.strAwayTeam,e.idAwayTeam,e.strAwayTeamBadge?e.strAwayTeamBadge+"/tiny":null);
+    const rh=hs>as?"W":hs<as?"L":"D",ra=hs>as?"L":hs<as?"W":"D";
+    [[H,hs,as,rh,0],[A,as,hs,ra,6]].forEach(([x,gf,ga,r,o])=>{x.P++;x[r]++;x.GF+=gf;x.GA+=ga;x.f.push(r);x.sp[o]++;x.sp[o+({W:1,D:2,L:3})[r]]++;x.sp[o+4]+=gf;x.sp[o+5]+=ga})});
+  const L=LEAGUES[c],n0=L?L.teams.length:0,teams=[...T.values()];
+  if(teams.length<Math.max(6,n0-2)||done.length<.6*(teams.length/2)*(R-1))return;     /* not enough data -> keep built-in table */
+  STAND.set(c,{teams:teams.map(x=>[x.n,x.P,x.W,x.D,x.L,x.GF,x.GA,x.W*3+x.D,x.f.slice(-5).join(""),String(x.id||""),x.logo,x.sp]),asof:new Date().toISOString().slice(0,10),src:"tsdb"});
+  TBL.clear();FC.clear();if(ONLINE===true)scheduleRender()}
 async function loadTSDB(key,M,DG){const P=TSPEND.get(key);if(P){P.forEach((l,c)=>{if(!(M.get(c)||[]).some(x=>!x.src)){M.set(c,l);logQ.push(...l);DG.set(c,{s:"tsdb",n:l.length})}});TSPEND.delete(key)}
   tsLeagues().forEach(c=>{if(!DG.has(c))DG.set(c,(M.get(c)||[]).length?{s:"tsdb",n:M.get(c).length}:{s:"none",n:0})});
   const p=loadTSRounds();if(ESPNOK===false&&p)await p}
@@ -1126,9 +1149,20 @@ function snapMatches(){if(SNAP)return SNAP;SNAP=[];Object.entries(LEAGUES).forEa
 function dayMatches(off=dayOff){if(ONLINE!==true)return off===0?snapMatches():[];const M=SB.get(ymd(dayDate(off)));if(!M)return [];return [].concat(...M.values())}
 function findMatch(id){for(const M of SB.values())for(const l of M.values()){const m=l.find(x=>x.id===id);if(m)return m}return snapMatches().find(x=>x.id===id)||(typeof teamFind==="function"&&teamFind(id))||(curM&&curM.id===id?curM:null)}
 function preOdds(m){return PRE.get(m.id)||(m.state==="pre"?m.odds:null)||SUMM.get(m.id)?.odds||m.odds||null}
-function mfc(m){const D=getTable(m.code);const po=preOdds(m);const w=typeof WX!=="undefined"?WX.get(m.id):null,wf=w&&w.f?w.f:1;const k=m.id+"|"+(STAND.has(m.code)?"L":"S")+"|"+(po?1:0)+"|"+wf;if(FC.has(k))return FC.get(k);
+/* self-calibration: per league, fit a sharpness factor s on settled journal entries (p^s, renormalised) */
+let CAL={},CALV=0,CALT=0;
+function calFit(es){let best=1,bl=1e9;for(let s=.5;s<=1.65;s+=.05){let ll=0;es.forEach(e=>{const q=e.q||e.p,w=q.map(x=>Math.pow(Math.max(x,.01),s)),S=w[0]+w[1]+w[2],i="HXA".indexOf(e.r);ll-=Math.log(w[i]/S)});if(ll<bl){bl=ll;best=s}}return best}
+function calUpdate(force){if(!force&&Date.now()-CALT<10*60e3)return;CALT=Date.now();if(typeof LOG==="undefined")return;
+  const es=Object.values(LOG).filter(e=>e&&e.r&&e.p&&!e.lt&&"HXA".includes(e.r));const nc={};
+  if(es.length>=40){const s=calFit(es);nc._=1+(s-1)*es.length/(es.length+40)}
+  const by={};es.forEach(e=>(by[e.c]=by[e.c]||[]).push(e));Object.entries(by).forEach(([c,l])=>{if(l.length>=30){const s=calFit(l);nc[c]=1+(s-1)*l.length/(l.length+30)}});
+  const sig=JSON.stringify(nc);if(sig!==JSON.stringify(CAL)){CAL=nc;CALV++;FC.clear()}}
+const calOf=c=>CAL[c]||CAL._||1;
+function mfc(m){calUpdate();const D=getTable(m.code);const po=preOdds(m);const w=typeof WX!=="undefined"?WX.get(m.id):null,wf=w&&w.f?w.f:1;const k=m.id+"|"+(STAND.has(m.code)?"L":"S")+"|"+(po?1:0)+"|"+wf+"|"+CALV;if(FC.has(k))return FC.get(k);
   const h=findTeam(D,m.home.name,m.home.id),a=findTeam(D,m.away.name,m.away.id);const ok=h&&a&&h!==a;
-  const r=forecast(D,ok?h:null,ok?a:null,po,wf);r.wf=wf;r.h=ok?h:null;r.a=ok?a:null;r.D=D;FC.set(k,r);return r}
+  const r=forecast(D,ok?h:null,ok?a:null,po,wf);r.wf=wf;r.raw=[r.H,r.X,r.A];
+  const cs=calOf(m.code);if(Math.abs(cs-1)>.01){const w=r.raw.map(x=>Math.pow(Math.max(x,.005),cs)),S=w[0]+w[1]+w[2];r.H=w[0]/S;r.X=w[1]/S;r.A=w[2]/S;r.cal=cs}
+  if(D&&!STAND.has(m.code)&&typeof tsTableWant==="function")tsTableWant(m.code);r.h=ok?h:null;r.a=ok?a:null;r.D=D;FC.set(k,r);return r}
 const mstate=m=>({min:m.minute,gh:m.home.score,ga:m.away.score,rh:m.reds[0],ra:m.reds[1]});
 function liveStats(m){const s=SUMM.get(m.id)?.stats;return s&&(s.sot?.[0]!=null||s.poss?.[0]!=null)?s:m.stats}
 function liveFor(m){const s=liveStats(m);return liveCalc(mfc(m),mstate(m),s?{sot:s.sot}:null)}
@@ -1277,7 +1311,7 @@ const r3=x=>Math.round(x*1000)/1000;
 function logMatches(list){if(ONLINE!==true)return;let ch=false;const now=Date.now();
   list.forEach(m=>{if(!m||m.snap||isOff(m.name))return;const e=LOG[m.id];
     if(m.state==="pre"&&m.date.getTime()>now-5*60e3){const r=mfc(m);
-      LOG[m.id]={id:m.id,c:m.code,d:m.date.toISOString(),h:m.home.name,a:m.away.name,p:[r3(r.H),r3(r.X),r3(r.A)],m:r.model?[r3(r.model.H),r3(r.model.X),r3(r.model.A)]:null,k:r.market?[r3(r.market.H),r3(r.market.X),r3(r.market.A)]:null,cf:r.conf,md:r.mode,r:null,s:null,u:now};ch=true}
+      LOG[m.id]={id:m.id,c:m.code,d:m.date.toISOString(),h:m.home.name,a:m.away.name,p:[r3(r.H),r3(r.X),r3(r.A)],q:r.raw?r.raw.map(r3):null,m:r.model?[r3(r.model.H),r3(r.model.X),r3(r.model.A)]:null,k:r.market?[r3(r.market.H),r3(r.market.X),r3(r.market.A)]:null,cf:r.conf,md:r.mode,r:null,s:null,u:now};ch=true}
     else if(!e&&m.state==="post"&&now-m.date.getTime()<3*864e5){const r=mfc(m);/* finished before the app saw it: log with the pre-match forecast */
       LOG[m.id]={id:m.id,c:m.code,d:m.date.toISOString(),h:m.home.name,a:m.away.name,p:[r3(r.H),r3(r.X),r3(r.A)],m:null,k:null,cf:r.conf,md:r.mode,r:m.home.score>m.away.score?"H":m.home.score<m.away.score?"A":"X",s:m.home.score+":"+m.away.score,u:now,lt:1};ch=true}
     else if(e&&!e.r&&m.state==="post"){e.r=m.home.score>m.away.score?"H":m.home.score<m.away.score?"A":"X";e.s=m.home.score+":"+m.away.score;ch=true}});
@@ -1365,7 +1399,7 @@ async function loadTeam(o){const k=tKey(o);let T=TEAMC.get(k);if(T&&Date.now()-T
     for(const d of [0,1,-1,2,-2,-3,3,-4]){const ev=await tsRound(o.code,r+d);if(ev)put(ev.map(e=>parseTS(e,o.code)).filter(Boolean))}}
   }finally{T.loading=false;if(view==="team")scheduleRender()}}
 function teamPseudo(code,hn,an){return {id:"x-"+code+"-"+norm(hn)+"-"+norm(an),code,slug:null,date:new Date(),state:"pre",snap:false,name:"",clock:"",minute:0,home:{id:"",name:hn,logo:null,score:0},away:{id:"",name:an,logo:null,score:0},odds:null,stats:null,details:[],reds:[0,0],venue:"",nodate:true}}
-function renderTeamView(){const L=t(),X=TT[lang]||TT.en,box=$("#teamBody");if(!curT){box.innerHTML=`<div class="empty">${X.none}</div>`;return}
+function renderTeamView(){const L=t(),X=TT[lang]||TT.en,box=$("#teamBody");if(curT)tsTableWant(curT.code);if(!curT){box.innerHTML=`<div class="empty">${X.none}</div>`;return}
   const o=curT,D=getTable(o.code),row=D?findTeam(D,o.name):null,T=TEAMC.get(tKey(o));
   const all=new Map(teamKnown(o));if(T)T.ms.forEach((m,id)=>{if(!all.has(id)){const dup=[...all.values()].some(x=>Math.abs(x.date-m.date)<6*3600e3&&sameTeam(x.home.name,m.home.name));if(!dup)all.set(id,m)}});
   const now=Date.now(),list=[...all.values()];
@@ -1602,9 +1636,9 @@ function renderLgList(){const L=t(),q=norm($("#lgq").value),groups={};
   Object.keys(LEAGUES).forEach(c=>{const l=LEAGUES[c],cn=country(l.cc);if(q&&!norm(l.name+" "+cn).includes(q))return;const g=FAV.leagues.has(c)?"★ "+L.favL:cn;(groups[g]=groups[g]||[]).push(c)});
   const keys=Object.keys(groups).sort((a,b)=>(a.startsWith("★")?-1:0)-(b.startsWith("★")?-1:0)||a.localeCompare(b,lang));
   $("#lgList").innerHTML=keys.map(k=>`<div class="lgg"><div class="eyebrow">${esc(k)}</div>${groups[k].map(c=>`<div class="lgi ${c===viewLg?"on":""}"><button type="button" class="lgb" data-lg="${c}">${flagSvg(c)}<span>${esc(LEAGUES[c].name)}</span></button>${lgStar(c)}</div>`).join("")}</div>`).join("")||`<div class="empty sm">—</div>`}
-function renderLgTable(){const L=t(),D=getTable(viewLg),box=$("#lgTable");if(!D){box.innerHTML="";return}
+function renderLgTable(){tsTableWant(viewLg);const L=t(),D=getTable(viewLg),box=$("#lgTable");if(!D){box.innerHTML="";return}
   const live=STAND.has(viewLg);
-  box.innerHTML=`<div class="ph"><h2>${flagSvg(viewLg)} ${esc(lgMeta(viewLg).name)}</h2><span class="note">${live?`<span class="okdot" aria-hidden="true"></span>${L.lgSrcLive}`:L.lgSrcSnap(fmtDate(D.L.asof||ASOF))}</span></div>
+  box.innerHTML=`<div class="ph"><h2>${flagSvg(viewLg)} ${esc(lgMeta(viewLg).name)}</h2><span class="note">${live?`<span class="okdot" aria-hidden="true"></span>${STAND.get(viewLg).src==="tsdb"?L.lgSrcLive.replace("ESPN","TheSportsDB"):L.lgSrcLive}`:L.lgSrcSnap(fmtDate(D.L.asof||ASOF))}</span></div>
   <div class="tbl-wrap"><table class="tb"><thead><tr>${L.cols.map((c,i)=>`<th class="${i==2||i==8||i==10?"t":""}">${c}</th>`).join("")}</tr></thead><tbody>${D.T.map(x=>`<tr class="${x.topZone?"zt":x.relZone?"zr":""}"><td style="width:34px;padding:2px">${teamStar(viewLg,x.name)}</td><td class="p">${x.pos}</td><td class="t"><button type="button" class="tn tlink" data-tn="${esc(x.name)}" data-tc="${viewLg}" data-ti="${esc(x.id||"")}">${logoImg(x)}${esc(x.name)}</button></td><td>${x.P}</td><td>${x.W}</td><td>${x.D}</td><td>${x.L}</td><td>${x.GF}:${x.GA}</td><td><b>${x.Pts}</b></td><td class="t"><span class="dots">${dots(x)}</span></td><td>${x.mental}</td><td class="t"><span class="pi"><i style="width:${x.power}%"></i></span>${x.power}</td></tr>`).join("")}</tbody></table></div>
   <div class="tleg"><span><i style="background:var(--good)"></i>${L.legTop}</span><span><i style="background:var(--bad)"></i>${L.legRel}</span></div>`}
 
