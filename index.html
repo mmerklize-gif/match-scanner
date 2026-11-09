@@ -672,6 +672,10 @@ body{background:transparent!important;position:relative}
 @media (max-width:700px){.bgart svg{inset:-12px -40% -12px -12px;width:calc(140% + 24px);opacity:.45}.bgart::after{background:linear-gradient(180deg,rgba(10,10,11,.75),rgba(10,10,11,.88))}}
 @media (min-width:1300px){body{max-width:1120px;margin:0 auto}}
 .lgsec,.panel,.board{background:var(--panel);backdrop-filter:none}
+
+.lvb{flex:none;font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--gold);box-shadow:inset 0 0 0 1.2px var(--gold);border-radius:4px;padding:2px 4px;line-height:1;margin-right:4px}
+.mp .mpick .lvt{font-style:normal;font-size:8.5px;font-weight:800;letter-spacing:.08em;opacity:.85;margin-right:1px}
+.mt .lvb{display:inline-block;width:auto;height:auto;min-width:0;background:none;font-size:9px;line-height:1;padding:2px 4px;align-self:center}
 </style>
 <div class="wrap">
   <header class="topbar">
@@ -1519,13 +1523,15 @@ function statusHTML(m){const L=t();if(m.snap)return `<span class="mst pre">—</
 function rowProbs(m){const p=m.state==="in"?liveFor(m):mfc(m),top=Math.max(p.H,p.X,p.A),pk=m.state==="in"?null:pickOf(p.H,p.X,p.A),on=k=>pk?pk.o.includes("HXA".indexOf(k)):p[k]===top;
   const done=m.state==="post"&&!isOff(m.name),res=done?(m.home.score>m.away.score?"H":m.home.score<m.away.score?"A":"X"):null;
   const three=`<span class="m3">${pct(p.H)} · ${pct(p.X)} · ${pct(p.A)}</span>`;
-  if(!pk){const k=p.H===top?"H":p.A===top?"A":"X";return `<span class="mpick live"><b>${{H:"1",X:"X",A:"2"}[k]}</b><small>${pct(top)}%</small></span>${three}`}
+  if(!pk){const k=p.H===top?"H":p.A===top?"A":"X";return `<span class="mpick live"><i class="lvt">LIVE</i><b>${{H:"1",X:"X",A:"2"}[k]}</b><small>${pct(top)}%</small></span>${three}`}
   const code=pk.o.map(i=>"1X2"[i]).join(""),hit=res?pickHit(pk,res):null;
   return `<span class="mpick k-${pk.k}${hit===true?" hit":hit===false?" miss":""}"><b>${code}</b><small>${hit===true?"✓":hit===false?"✗":pct(pk.p)+"%"}</small></span>${three}`}
-function favSide(m){if(m.snap&&m.state!=="pre")return null;const p=m.state==="in"?liveFor(m):mfc(m);if(Math.max(p.H,p.A)<.40||Math.abs(p.H-p.A)<.08)return null;return p.H>p.A?"h":"a"}
-function tline(tm,m,s,fv){const win=m.state==="post"&&((s==="h"&&m.home.score>m.away.score)||(s==="a"&&m.away.score>m.home.score));
-  return `<span class="mt ${win?"win":""}${fv===s?" fav":""}">${logoImg(tm)}<span class="nm">${esc(tm.name)}</span>${fv===s?'<span class="fvb" title="Faworyt">FAV</span>':""}${isFavT(tm.name)?'<span class="fs" aria-hidden="true">★</span>':""}${m.state!=="pre"&&!m.snap?`<b class="msc">${tm.score}</b>`:""}</span>`}
-function mrow(m){return `<button type="button" class="mrow ${m.state}${curM&&curM.id===m.id?" sel":""}" data-mid="${esc(m.id)}">${statusHTML(m)}<span class="mteams">${(fv=>tline(m.home,m,"h",fv)+tline(m.away,m,"a",fv))(favSide(m))}</span><span class="mp ${m.state==="in"?"lv":""}">${rowProbs(m)}</span></button>`}
+/* FAV = pre-match favourite (never changes); LIVE = team the in-play model favours now, shown only when it differs */
+function favSide(m){const p=mfc(m);if(Math.max(p.H,p.A)<.40||Math.abs(p.H-p.A)<.08)return null;return p.H>p.A?"h":"a"}
+function liveSide(m,fv){if(m.state!=="in")return null;const p=liveFor(m);if(Math.max(p.H,p.A)<.40||Math.abs(p.H-p.A)<.08)return null;const s=p.H>p.A?"h":"a";return s===fv?null:s}
+function tline(tm,m,s,fv,lv){const win=m.state==="post"&&((s==="h"&&m.home.score>m.away.score)||(s==="a"&&m.away.score>m.home.score));
+  return `<span class="mt ${win?"win":""}${fv===s?" fav":""}">${logoImg(tm)}<span class="nm">${esc(tm.name)}</span>${fv===s?'<span class="fvb" title="Faworyt przed meczem">FAV</span>':""}${lv===s?'<span class="lvb" title="Prowadzi w szansach na żywo">LIVE</span>':""}${isFavT(tm.name)?'<span class="fs" aria-hidden="true">★</span>':""}${m.state!=="pre"&&!m.snap?`<b class="msc">${tm.score}</b>`:""}</span>`}
+function mrow(m){return `<button type="button" class="mrow ${m.state}${curM&&curM.id===m.id?" sel":""}" data-mid="${esc(m.id)}">${statusHTML(m)}<span class="mteams">${(fv=>{const lv=liveSide(m,fv);return tline(m.home,m,"h",fv,lv)+tline(m.away,m,"a",fv,lv)})(favSide(m))}</span><span class="mp ${m.state==="in"?"lv":""}">${rowProbs(m)}</span></button>`}
 const lgRank=c=>(FAV.leagues.has(c)?0:1000)+(TOP.includes(c)?TOP.indexOf(c):100);
 /* collapsed league groups (remembered on this device) */
 let COLL=new Set();try{COLL=new Set(JSON.parse(localStorage.getItem("skaner-coll")||"[]"))}catch(e){}
