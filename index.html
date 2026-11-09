@@ -638,6 +638,30 @@ body{background:var(--bg)}
 .panel,.board{background:var(--panel);border-color:var(--line);border-radius:14px}
 .srcpill.on .d{background:var(--good)}
 @media(max-width:560px){.mrow{grid-template-columns:40px minmax(0,1fr) auto;gap:8px;padding:10px}.mp{grid-template-columns:repeat(3,32px);gap:3px}.mt{font-size:14px}}
+
+/* favourite + pick badge (v2) */
+.mp{display:flex!important;flex-direction:column;align-items:center;gap:4px;min-width:64px}
+.mpick{display:flex;align-items:baseline;justify-content:center;gap:5px;min-width:64px;padding:5px 8px;border-radius:9px;line-height:1;font-variant-numeric:tabular-nums}
+.mpick b{font-size:15px;font-weight:800}.mpick small{font-size:12px;font-weight:700}
+.mpick.k-strong{background:var(--gold);color:#111}
+.mpick.k-lean{box-shadow:inset 0 0 0 1.5px var(--gold);color:var(--gold)}
+.mpick.k-close{box-shadow:inset 0 0 0 1.5px var(--dim);color:var(--fg)}
+.mpick.live{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+.mpick.hit{background:var(--good)!important;color:#fff!important;box-shadow:none}
+.mpick.miss{background:transparent!important;color:var(--bad)!important;box-shadow:inset 0 0 0 1.5px var(--bad)!important}
+.m3{font-size:10.5px;color:var(--dim);font-weight:600;white-space:nowrap;letter-spacing:.01em}
+.mt.fav .nm{color:var(--fg);font-weight:700}
+.fvb{flex:none;font-size:9px;font-weight:800;letter-spacing:.06em;color:#111;background:var(--gold);border-radius:4px;padding:2px 4px;line-height:1}
+.colbar{align-items:center;flex-wrap:wrap}
+.leg{display:flex;align-items:center;gap:6px;margin-right:auto;font-size:11.5px;color:var(--muted)}
+.leg i{display:inline-block;width:14px;height:10px;border-radius:3px;margin-left:6px}
+.leg i:first-child{margin-left:0}
+.leg i.k-strong{background:var(--gold)}.leg i.k-lean{box-shadow:inset 0 0 0 1.5px var(--gold)}.leg i.k-close{box-shadow:inset 0 0 0 1.5px var(--dim)}
+.mp .mpick{display:flex;flex-direction:row;align-items:baseline;justify-content:center;gap:5px;padding:5px 8px;border-radius:9px;background:transparent;font-family:var(--body);color:inherit}
+.mp .mpick.k-strong{background:var(--gold);color:#111}.mp .mpick.k-lean{color:var(--gold)}.mp .mpick.k-close{color:var(--fg)}
+.mp .mpick.live{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+.mp .m3{display:block;background:none;padding:0;border-radius:0;font-size:10.5px;color:var(--dim)}
+.mt .nm{flex:0 1 auto}.mt .msc{margin-left:auto}.mt .fvb{margin-right:4px}
 </style>
 <div class="wrap">
   <header class="topbar">
@@ -1472,10 +1496,14 @@ function statusHTML(m){const L=t();if(m.snap)return `<span class="mst pre">—</
   return `<span class="mst pre">${fmtTime(m.date)}</span>`}
 function rowProbs(m){const p=m.state==="in"?liveFor(m):mfc(m),top=Math.max(p.H,p.X,p.A),pk=m.state==="in"?null:pickOf(p.H,p.X,p.A),on=k=>pk?pk.o.includes("HXA".indexOf(k)):p[k]===top;
   const done=m.state==="post"&&!isOff(m.name),res=done?(m.home.score>m.away.score?"H":m.home.score<m.away.score?"A":"X"):null;
-  return [["H","1","var(--home)"],["X","X","var(--draw)"],["A","2","var(--away)"]].map(([k,l,c])=>`<span class="${on(k)?"top":""} ${res===k?"res":""}" style="${on(k)?`--c:${c}`:""}"><em>${l}</em>${pct(p[k])}</span>`).join("")}
-function tline(tm,m,s){const win=m.state==="post"&&((s==="h"&&m.home.score>m.away.score)||(s==="a"&&m.away.score>m.home.score));
-  return `<span class="mt ${win?"win":""}">${logoImg(tm)}<span class="nm">${esc(tm.name)}</span>${isFavT(tm.name)?'<span class="fs" aria-hidden="true">★</span>':""}${m.state!=="pre"&&!m.snap?`<b class="msc">${tm.score}</b>`:""}</span>`}
-function mrow(m){return `<button type="button" class="mrow ${m.state}${curM&&curM.id===m.id?" sel":""}" data-mid="${esc(m.id)}">${statusHTML(m)}<span class="mteams">${tline(m.home,m,"h")}${tline(m.away,m,"a")}</span><span class="mp ${m.state==="in"?"lv":""}">${rowProbs(m)}</span></button>`}
+  const three=`<span class="m3">${pct(p.H)} · ${pct(p.X)} · ${pct(p.A)}</span>`;
+  if(!pk){const k=p.H===top?"H":p.A===top?"A":"X";return `<span class="mpick live"><b>${{H:"1",X:"X",A:"2"}[k]}</b><small>${pct(top)}%</small></span>${three}`}
+  const code=pk.o.map(i=>"1X2"[i]).join(""),hit=res?pickHit(pk,res):null;
+  return `<span class="mpick k-${pk.k}${hit===true?" hit":hit===false?" miss":""}"><b>${code}</b><small>${hit===true?"✓":hit===false?"✗":pct(pk.p)+"%"}</small></span>${three}`}
+function favSide(m){if(m.snap&&m.state!=="pre")return null;const p=m.state==="in"?liveFor(m):mfc(m);if(Math.max(p.H,p.A)<.40||Math.abs(p.H-p.A)<.08)return null;return p.H>p.A?"h":"a"}
+function tline(tm,m,s,fv){const win=m.state==="post"&&((s==="h"&&m.home.score>m.away.score)||(s==="a"&&m.away.score>m.home.score));
+  return `<span class="mt ${win?"win":""}${fv===s?" fav":""}">${logoImg(tm)}<span class="nm">${esc(tm.name)}</span>${fv===s?'<span class="fvb" title="Faworyt">FAV</span>':""}${isFavT(tm.name)?'<span class="fs" aria-hidden="true">★</span>':""}${m.state!=="pre"&&!m.snap?`<b class="msc">${tm.score}</b>`:""}</span>`}
+function mrow(m){return `<button type="button" class="mrow ${m.state}${curM&&curM.id===m.id?" sel":""}" data-mid="${esc(m.id)}">${statusHTML(m)}<span class="mteams">${(fv=>tline(m.home,m,"h",fv)+tline(m.away,m,"a",fv))(favSide(m))}</span><span class="mp ${m.state==="in"?"lv":""}">${rowProbs(m)}</span></button>`}
 const lgRank=c=>(FAV.leagues.has(c)?0:1000)+(TOP.includes(c)?TOP.indexOf(c):100);
 /* collapsed league groups (remembered on this device) */
 let COLL=new Set();try{COLL=new Set(JSON.parse(localStorage.getItem("skaner-coll")||"[]"))}catch(e){}
@@ -1516,7 +1544,7 @@ function renderTodayList(){const L=t(),box=$("#todayList"),q=norm($("#tq").value
     const days=[...new Set(hits.map(h=>h[0]))].sort((a,b)=>a-b);
     other=days.map(o=>{const ms=hits.filter(h=>h[0]===o).map(h=>h[1]),d=dayDate(o);return `<div class="odh">${esc(o===-1?L.day.yest:o===0?L.day.today:o===1?L.day.tom:d.toLocaleDateString(L.dateFmt,{weekday:"long"}))} · ${d.toLocaleDateString(L.dateFmt,{day:"numeric",month:"short"})}</div>${grouped(ms,"d"+o)}`}).join("");
     if(other)other=`<div class="odt">${S2.other}</div>`+other}
-  const tools=list.length>1&&!qw.length?`<div class="colbar"><button type="button" class="lnk" id="collAll">${S2.collAll}</button><button type="button" class="lnk" id="expAll">${S2.expAll}</button></div>`:"";
+  const LG=(LEG[lang]||LEG.en);const tools=list.length>1&&!qw.length?`<div class="colbar"><span class="leg"><i class="k-strong"></i>${LG.s}<i class="k-lean"></i>${LG.l}<i class="k-close"></i>${LG.c}</span><button type="button" class="lnk" id="collAll">${S2.collAll}</button><button type="button" class="lnk" id="expAll">${S2.expAll}</button></div>`:"";
   let diag="";const DG=DIAG.get(ymd(dayDate(dayOff)));
   if(ONLINE===true&&!FEED&&DG){const e=[...DG.entries()],cnt=s=>e.filter(x=>x[1].s===s).length,lab=c=>esc(lgMeta(c).name);
     const row=(s,t)=>{const l=e.filter(x=>x[1].s===s);return l.length?`<p><b>${t}</b> ${l.map(([c,v])=>`${lab(c)}${v.n?` (${v.n})`:""}`).join(", ")}</p>`:""};
@@ -1530,6 +1558,7 @@ var OFFT={pl:{title:"Brak połączenia z wynikami",web:d=>`Nie udało się pobra
  en:{title:"No connection to live scores",web:d=>`Could not load matches (ESPN or TheSportsDB). Check your internet — the app retries every 45 s. Showing built-in data from ${d} for now.`,claude:d=>`In the Claude preview the page cannot reach score services, so you see built-in data from ${d}. Today's matches and live scores work in the GitHub version.`},
  de:{title:"Keine Verbindung zu Live-Ergebnissen",web:d=>`Spiele konnten nicht geladen werden (ESPN oder TheSportsDB). Prüfe dein Internet — die App versucht es alle 45 s erneut. Vorerst eingebaute Daten vom ${d}.`,claude:d=>`In der Claude-Vorschau kann die Seite keine Ergebnisdienste erreichen, daher eingebaute Daten vom ${d}. Spiele des Tages und Live-Ergebnisse funktionieren in der GitHub-Version.`},
  es:{title:"Sin conexión con los resultados",web:d=>`No se pudieron cargar los partidos (ESPN ni TheSportsDB). Revisa tu internet — la app reintenta cada 45 s. Por ahora ves datos integrados del ${d}.`,claude:d=>`En la vista previa de Claude la página no puede conectarse a servicios de resultados, así que ves datos integrados del ${d}. Los partidos del día y en vivo funcionan en la versión de GitHub.`}};
+var LEG={pl:{s:"pewny",l:"lekka przewaga",c:"podwójna szansa"},en:{s:"strong",l:"slight edge",c:"double chance"},de:{s:"sicher",l:"leichter Vorteil",c:"Doppelte Chance"},es:{s:"claro",l:"ligera ventaja",c:"doble oportunidad"}};
 var SRT={pl:{src:"Źródła danych",err:"bez danych",none:"brak meczów w obu źródłach",other:"Znalezione w inne dni",collAll:"Zwiń wszystkie",expAll:"Rozwiń wszystkie",noHit:q=>`Brak meczów „${q}” w tym dniu.`},
  en:{src:"Data sources",err:"no data",none:"no matches in either source",other:"Found on other days",collAll:"Collapse all",expAll:"Expand all",noHit:q=>`No “${q}” matches on this day.`},
  de:{src:"Datenquellen",err:"keine Daten",none:"keine Spiele in beiden Quellen",other:"An anderen Tagen gefunden",collAll:"Alle einklappen",expAll:"Alle ausklappen",noHit:q=>`Keine Spiele für „${q}“ an diesem Tag.`},
