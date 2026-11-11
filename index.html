@@ -676,6 +676,9 @@ body{background:transparent!important;position:relative}
 .lvb{flex:none;font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--gold);box-shadow:inset 0 0 0 1.2px var(--gold);border-radius:4px;padding:2px 4px;line-height:1;margin-right:4px}
 .mp .mpick .lvt{font-style:normal;font-size:8.5px;font-weight:800;letter-spacing:.08em;opacity:.85;margin-right:1px}
 .mt .lvb{display:inline-block;width:auto;height:auto;min-width:0;background:none;font-size:9px;line-height:1;padding:2px 4px;align-self:center}
+
+.natbox{margin:12px 0 0;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.natm{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:14px}.natm b{font-size:17px;font-variant-numeric:tabular-nums}.natm em{font-style:normal;color:var(--gold);font-weight:700;margin:0 auto}
 </style>
 <div class="wrap">
   <header class="topbar">
@@ -897,10 +900,12 @@ const pct=x=>Math.round(x*100);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let lang="pl", cur="pl";
 const t=()=>Object.assign({},I18N[lang],I18N2[lang]);
-const CUPS={"cl":{name:"Champions League",espn:"uefa.champions",cc:"eu"},"el":{name:"Europa League",espn:"uefa.europa",cc:"eu"},"ecl":{name:"Conference League",espn:"uefa.europa.conf",cc:"eu"}};
+const CUPS={"cl":{name:"Champions League",espn:"uefa.champions",cc:"eu"},"el":{name:"Europa League",espn:"uefa.europa",cc:"eu"},"ecl":{name:"Conference League",espn:"uefa.europa.conf",cc:"eu"},
+ "unl":{name:"UEFA Nations League",espn:"uefa.nations",cc:"nat",nat:true,k:40},"eq":{name:"Euro – eliminacje",espn:"uefa.euroq",cc:"nat",nat:true,k:40},"wcq":{name:"MŚ – eliminacje (UEFA)",espn:"fifa.worldq.uefa",cc:"nat",nat:true,k:40},"fr":{name:"Mecze towarzyskie",espn:"fifa.friendly",cc:"nat",nat:true,k:20}};
+const GLOBE='<rect width="26" height="18" fill="#0b3b5c"/><circle cx="13" cy="9" r="6.2" fill="none" stroke="#7dd3fc" stroke-width="1.2"/><ellipse cx="13" cy="9" rx="2.6" ry="6.2" fill="none" stroke="#7dd3fc" stroke-width="1"/><path d="M6.8 9h12.4M8 5.6h10M8 12.4h10" stroke="#7dd3fc" stroke-width=".9"/>';
 const EU_FLAG='<rect width="26" height="18" fill="#003399"/><g fill="#ffcc00">'+Array.from({length:12},(_,i)=>{const a=i*Math.PI/6;return `<circle cx="${(13+5*Math.cos(a)).toFixed(2)}" cy="${(9+5*Math.sin(a)).toFixed(2)}" r=".9"/>`}).join("")+'</g>';
-const lgMeta=k=>LEAGUES[k]?{name:LEAGUES[k].name,flag:LEAGUES[k].flag,cc:LEAGUES[k].cc}:CUPS[k]?{name:CUPS[k].name,flag:EU_FLAG,cc:"eu"}:{name:k,flag:"",cc:""};
-const country=cc=>cc==="eu"?(t().cups):(COUNTRY[lang][cc]||cc);
+const lgMeta=k=>LEAGUES[k]?{name:LEAGUES[k].name,flag:LEAGUES[k].flag,cc:LEAGUES[k].cc}:CUPS[k]?{name:CUPS[k].name,flag:CUPS[k].nat?(k==="fr"?GLOBE:EU_FLAG):EU_FLAG,cc:CUPS[k].cc}:{name:k,flag:"",cc:""};
+const country=cc=>cc==="nat"?({pl:"Reprezentacje",en:"National teams",de:"Nationalteams",es:"Selecciones"}[lang]||"National teams"):cc==="eu"?(t().cups):(COUNTRY[lang][cc]||cc);
 const norm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/ł/g,"l").replace(/\b(fc|cf|sc|afc|ac|ssc|sk|fk|nk|cd|ud|rc|club|de|sv|vfb|vfl|tsg|1\.|as|ss|us|calcio)\b/g," ").replace(/[^a-z0-9]+/g," ").trim();
 
 /* ---------- FAVOURITES ---------- */
@@ -999,9 +1004,10 @@ function pickLabel(pk,hn,an){const P=PKT[lang]||PKT.en,code=pk.o.map(i=>"1X2"[i]
   const txt=code==="12"?P.any:`${code==="1X"?hn:an} ${P.or}`;return {code,txt,kind:P[pk.k]}}
 const pickHit=(pk,r)=>pk.o.includes(["H","X","A"].indexOf(r));
 // full forecast: model (table) + market (odds) blend
-function forecast(D,h,a,odds,wf){
+function forecast(D,h,a,odds,wf,lam){
   let model=null,market=null,lh,la,mode;
   if(D&&h&&a){const [mh,ma]=modelLambdas(D,h,a);const g=grid(mh,ma);model={...KAL(g),lh:mh,la:ma}}
+  if(!model&&lam){const g=grid(lam[0],lam[1]);model={...KAL(g),lh:lam[0],la:lam[1]}}
   if(odds&&odds.H){market={H:odds.H,X:odds.X,A:odds.A,provider:odds.provider,dec:odds.dec||[1/odds.H,1/odds.X,1/odds.A]}}
   if(model&&market){const [kh,ka]=fitLambdas(market);lh=Math.pow(model.lh,.3)*Math.pow(kh,.7);la=Math.pow(model.la,.3)*Math.pow(ka,.7);mode="blend"}
   else if(model){lh=model.lh;la=model.la;mode="model"}
@@ -1009,10 +1015,10 @@ function forecast(D,h,a,odds,wf){
   else{lh=1.45;la=1.15;mode="none"}
   if(wf&&wf<1){const k=mode==="market"?.5:mode==="blend"?.75:1,f=1-(1-wf)*k;lh*=f;la*=f}   /* bad weather: fewer goals */
   const r=grid(lh,la);
-  let fin=mode==="market"?{H:market.H,X:market.X,A:market.A}:mode==="blend"?{H:.45*model.H+.55*market.H,X:.45*model.X+.55*market.X,A:.45*model.A+.55*market.A}:mode==="model"?{H:model.H,X:model.X,A:model.A}:KAL(r);
+  let fin=mode==="market"?{H:market.H,X:market.X,A:market.A}:mode==="blend"?{H:.3*model.H+.7*market.H,X:.3*model.X+.7*market.X,A:.3*model.A+.7*market.A}:mode==="model"?{H:model.H,X:model.X,A:model.A}:KAL(r);
   Object.assign(r,fin,{model,market,mode});
   // confidence: sample size + agreement
-  const gp=h&&a?Math.min(h.P,a.P):0, top=Math.max(r.H,r.X,r.A);
+  const gp=h&&a?Math.min(h.P,a.P):lam?8:0, top=Math.max(r.H,r.X,r.A);
   let c=(mode==="blend"?.5:mode==="market"?.4:mode==="model"?.25:0)+Math.min(gp,15)/15*.25+clamp((top-.4)*1.2,0,.25);
   if(model&&market){const dis=Math.abs(model.H-market.H)+Math.abs(model.A-market.A);c-=clamp(dis-.1,0,.3)}
   r.conf=c>.62?2:c>.42?1:0;
@@ -1076,7 +1082,7 @@ function parseEvent(ev,code){
   const stats=pairStats(statsOf(H.statistics),statsOf(A.statistics));
   const det=(c.details||[]).map(d=>({min:d.clock?.displayValue||"",side:String(d.team?.id)===h.id?"h":String(d.team?.id)===a.id?"a":"",goal:!!d.scoringPlay,pen:!!d.penaltyKick,og:!!d.ownGoal,red:!!d.redCard,who:d.athletesInvolved?.[0]?.displayName||""}));
   let reds=[0,0];if(stats?.rc&&(stats.rc[0]!=null||stats.rc[1]!=null))reds=[stats.rc[0]||0,stats.rc[1]||0];else det.forEach(d=>{if(d.red){if(d.side==="h")reds[0]++;else if(d.side==="a")reds[1]++}});
-  const m={id:String(ev.id),code,slug:slugOf(code),date:new Date(ev.date),state:ty.state||"pre",name:ty.name||"",clock:st.displayClock||"",minute:minuteOf(st),home:h,away:a,odds:parseOdds(c.odds?.[0]),stats,details:det,reds,venue:c.venue?.fullName||"",city:c.venue?.address?.city||""};
+  const m={id:String(ev.id),code,slug:slugOf(code),date:new Date(ev.date),state:ty.state||"pre",name:ty.name||"",clock:st.displayClock||"",minute:minuteOf(st),home:h,away:a,odds:parseOdds(c.odds?.[0]),stats,details:det,reds,venue:c.venue?.fullName||"",city:c.venue?.address?.city||"",neutral:!!c.neutralSite};
   if(m.state==="pre"&&m.odds)PRE.set(m.id,m.odds);
   return m;
 }
@@ -1084,7 +1090,7 @@ async function loadDay(off,only){if(FEED)return 0;
   const key=ymd(dayDate(off));if(!SB.has(key))SB.set(key,new Map());const M=SB.get(key);
   const codes=(only||[...Object.keys(LEAGUES).filter(k=>LEAGUES[k].espn),...Object.keys(CUPS)]).filter(c=>!ESPNDEAD.has(c));let ok=0;
   if(!DIAG.has(key))DIAG.set(key,new Map());const DG=DIAG.get(key);
-  if(ESPNOK!==false)await pool(codes,5,async code=>{try{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;if(ESPNOK===null){ESPNOK=true;ONLINE=true;try{renderChromeAll()}catch(_){}}if(ONLINE===true)scheduleRender();const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);if(!ev.length&&(M.get(code)||[]).some(m=>m.src==="tsdb"))return;M.set(code,ev);logQ.push(...ev);DG.set(code,{s:"espn",n:ev.length})}catch(e){if(/http 40[04]/.test(e&&e.message)){ESPNDEAD.add(code);try{localStorage.setItem("skaner-dead",JSON.stringify({t:Date.now(),c:[...ESPNDEAD]}))}catch(_){}}if(!DG.has(code)||DG.get(code).s==="err")DG.set(code,{s:"err",n:0})}});
+  if(ESPNOK!==false)await pool(codes,5,async code=>{try{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;if(ESPNOK===null){ESPNOK=true;ONLINE=true;try{renderChromeAll()}catch(_){}}if(ONLINE===true)scheduleRender();const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);if(CUPS[code]&&CUPS[code].nat)natLearn(ev);if(!ev.length&&(M.get(code)||[]).some(m=>m.src==="tsdb"))return;M.set(code,ev);logQ.push(...ev);DG.set(code,{s:"espn",n:ev.length})}catch(e){if(/http 40[04]/.test(e&&e.message)){ESPNDEAD.add(code);try{localStorage.setItem("skaner-dead",JSON.stringify({t:Date.now(),c:[...ESPNDEAD]}))}catch(_){}}if(!DG.has(code)||DG.get(code).s==="err")DG.set(code,{s:"err",n:0})}});
   const tsP=loadTSDB(key,M,DG).then(()=>{if(logQ.length){const q=logQ.splice(0);logMatches(q)}TBL.clear();if(ONLINE===true)scheduleRender()}).catch(()=>{});
   if(ESPNOK===false)await tsP;
   if(ESPNOK===false)ok=[...M.values()].some(l=>l.length)?1:ok;
@@ -1208,9 +1214,9 @@ function calUpdate(force){if(!force&&Date.now()-CALT<10*60e3)return;CALT=Date.no
   const by={};es.forEach(e=>(by[e.c]=by[e.c]||[]).push(e));Object.entries(by).forEach(([c,l])=>{if(l.length>=30){const s=calFit(l);nc[c]=1+(s-1)*l.length/(l.length+30)}});
   const sig=JSON.stringify(nc);if(sig!==JSON.stringify(CAL)){CAL=nc;CALV++;FC.clear()}}
 const calOf=c=>CAL[c]||CAL._||1;
-function mfc(m){calUpdate();const D=getTable(m.code);const po=preOdds(m);const w=typeof WX!=="undefined"?WX.get(m.id):null,wf=w&&w.f?w.f:1;const k=m.id+"|"+(STAND.has(m.code)?"L":"S")+"|"+(po?1:0)+"|"+wf+"|"+CALV;if(FC.has(k))return FC.get(k);
+function mfc(m){calUpdate();const D=getTable(m.code);const po=preOdds(m);const w=typeof WX!=="undefined"?WX.get(m.id):null,wf=w&&w.f?w.f:1;const k=m.id+"|"+(STAND.has(m.code)?"L":"S")+"|"+(po?1:0)+"|"+wf+"|"+CALV+(isNat(m.code)?"|"+natElo(m.home.name)+":"+natElo(m.away.name):"");if(FC.has(k))return FC.get(k);
   const h=findTeam(D,m.home.name,m.home.id),a=findTeam(D,m.away.name,m.away.id);const ok=h&&a&&h!==a;
-  const r=forecast(D,ok?h:null,ok?a:null,po,wf);r.wf=wf;r.raw=[r.H,r.X,r.A];
+  const lam=isNat(m.code)?natLam(m):null;const r=forecast(D,ok?h:null,ok?a:null,po,wf,lam);r.wf=wf;r.nat=!!lam;r.raw=[r.H,r.X,r.A];
   const cs=calOf(m.code);if(Math.abs(cs-1)>.01){const w=r.raw.map(x=>Math.pow(Math.max(x,.005),cs)),S=w[0]+w[1]+w[2];r.H=w[0]/S;r.X=w[1]/S;r.A=w[2]/S;r.cal=cs}
   if(D&&!STAND.has(m.code)&&typeof tsTableWant==="function")tsTableWant(m.code);r.h=ok?h:null;r.a=ok?a:null;r.D=D;FC.set(k,r);return r}
 const mstate=m=>({min:m.minute,gh:m.home.score,ga:m.away.score,rh:m.reds[0],ra:m.reds[1]});
@@ -1418,6 +1424,24 @@ document.addEventListener("click",async e=>{const T=e.target;
   if(T.closest("#jCopy")){const csv=jCSV(),J=t().jr;
     try{if(location.protocol==="https:"&&window.top===window.self){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="match-scanner-journal.csv";document.body.appendChild(a);a.click();a.remove();$("#jMsg").textContent=J.saved;return}}catch(_){}
     try{await navigator.clipboard.writeText(csv);$("#jMsg").textContent=J.copied}catch(_){$("#jMsg").textContent=J.copyFail}}});
+
+/* ---- National teams: built-in Elo-style strength (approx., mid-2026) that updates itself from results ---- */
+var NATELO0={"spain":2165,"argentina":2140,"france":2085,"england":2055,"brazil":2025,"portugal":2010,"netherlands":1990,"colombia":1975,"germany":1965,"italy":1935,"croatia":1930,"belgium":1905,"uruguay":1905,"morocco":1900,"japan":1885,"switzerland":1870,"ecuador":1870,"denmark":1865,"norway":1860,"austria":1860,"turkey":1850,"senegal":1830,"united states":1830,"iran":1820,"mexico":1820,"south korea":1815,"serbia":1800,"ukraine":1800,"australia":1790,"poland":1780,"paraguay":1780,"canada":1780,"algeria":1780,"scotland":1770,"hungary":1770,"czechia":1770,"sweden":1760,"greece":1760,"nigeria":1760,"ivory coast":1760,"venezuela":1750,"slovakia":1740,"romania":1730,"wales":1720,"slovenia":1720,"georgia":1720,"egypt":1720,"chile":1720,"peru":1720,"uzbekistan":1720,"albania":1700,"republic of ireland":1700,"tunisia":1700,"panama":1700,"cameroon":1680,"saudi arabia":1680,"iceland":1660,"bosnia and herzegovina":1660,"israel":1650,"finland":1640,"costa rica":1650,"iraq":1650,"jordan":1650,"qatar":1640,"ghana":1640,"mali":1680,"south africa":1650,"dr congo":1660,"northern ireland":1620,"north macedonia":1620,"kosovo":1620,"montenegro":1600,"jamaica":1600,"bolivia":1600,"united arab emirates":1600,"honduras":1600,"bulgaria":1560,"new zealand":1550,"belarus":1520,"armenia":1520,"kazakhstan":1520,"china":1500,"azerbaijan":1480,"luxembourg":1480,"cyprus":1430,"faroe islands":1420,"lithuania":1400,"latvia":1400,"estonia":1400,"moldova":1350,"malta":1350,"andorra":1200,"liechtenstein":1150,"gibraltar":1100,"san marino":1000,"cape verde":1680,"haiti":1550,"curacao":1600,"new caledonia":1350};
+var NATALIAS={"turkiye":"turkey","czech republic":"czechia","korea republic":"south korea","usa":"united states","ireland":"republic of ireland","bosnia-herzegovina":"bosnia and herzegovina","bosnia & herzegovina":"bosnia and herzegovina","cote d'ivoire":"ivory coast","côte d'ivoire":"ivory coast","ir iran":"iran","congo dr":"dr congo","cabo verde":"cape verde","macedonia":"north macedonia","fyr macedonia":"north macedonia","uae":"united arab emirates","holland":"netherlands"};
+let NATELO={...NATELO0},NATDONE=new Set();try{const s=JSON.parse(localStorage.getItem("skaner-natelo")||"null");if(s&&s.r){Object.assign(NATELO,s.r);NATDONE=new Set(s.d||[])}}catch(e){}
+function natKey(n){let k=String(n||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+(u21|u-21|women|w)$/,"").trim();return NATALIAS[k]||k}
+const natElo=n=>NATELO[natKey(n)]||1500;
+const isNat=c=>!!(CUPS[c]&&CUPS[c].nat);
+/* goals from rating gap: equal teams ~1.3 each, 400 points ~3.3 v 0.5 */
+function natLam(m){const dr=natElo(m.home.name)-natElo(m.away.name)+(m.neutral?0:70);return [1.3*Math.exp(dr/430),1.3*Math.exp(-dr/430)]}
+function natLearn(list){let ch=false;(list||[]).forEach(m=>{if(!isNat(m.code)||m.state!=="post"||NATDONE.has(m.id))return;
+    const a=natKey(m.home.name),b=natKey(m.away.name),ra=natElo(a),rb=natElo(b),dr=ra-rb+(m.neutral?0:70),we=1/(Math.pow(10,-dr/400)+1);
+    const gd=Math.abs(m.home.score-m.away.score),G=gd<=1?1:gd===2?1.5:(11+gd)/8,K=(CUPS[m.code].k||30)*G,w=m.home.score>m.away.score?1:m.home.score<m.away.score?0:.5;
+    NATELO[a]=Math.round(ra+K*(w-we));NATELO[b]=Math.round(rb-K*(w-we));NATDONE.add(m.id);ch=true});
+  if(ch){FC.clear();try{const r={};Object.keys(NATELO).forEach(k=>{if(NATELO[k]!==NATELO0[k])r[k]=NATELO[k]});localStorage.setItem("skaner-natelo",JSON.stringify({r,d:[...NATDONE].slice(-600)}))}catch(e){}}}
+function natHTML(m){const T={pl:["Siła reprezentacji (ranking Elo)","boisko neutralne","przewaga gospodarza","ranking aktualizuje się sam po każdym meczu"],en:["National team strength (Elo rating)","neutral venue","home advantage","rating updates itself after every match"],de:["Stärke der Nationalteams (Elo)","neutraler Ort","Heimvorteil","Wertung aktualisiert sich nach jedem Spiel"],es:["Fuerza de las selecciones (Elo)","campo neutral","ventaja local","el ranking se actualiza tras cada partido"]}[lang]||[];
+  const a=natElo(m.home.name),b=natElo(m.away.name),d=a-b;
+  return `<div class="natbox"><div class="eyebrow">${T[0]}</div><div class="natm"><span>${esc(m.home.name)} <b>${a}</b></span><em>${d>0?"+":""}${d}</em><span><b>${b}</b> ${esc(m.away.name)}</span></div><div class="wxe">${m.neutral?T[1]:T[2]+" +70"} · ${T[3]}</div></div>`}
 
 /* ---- Club page (like LiveScore): table position, form, next matches with prediction, last results ---- */
 var TT={pl:{back:"← Wróć",next:"Najbliższe mecze",last:"Ostatnie wyniki",none:"Brak danych o meczach.",loading:"Wczytuję terminarz…",pos:p=>`${p}. miejsce`,pts:"pkt",played:"Mecze",wdl:"Z-R-P",goals:"Bramki",form:"Forma",mental:"Mentalność",power:"Siła",win:"szansa wygranej",h:"D",a:"W",res:{W:"W",D:"R",L:"P"},src:"Źródło",open:"Kliknij mecz, aby zobaczyć pełną analizę",fixturesOnly:"Kolejna kolejka (bez dat — z danych wbudowanych)"},
@@ -1665,7 +1689,7 @@ function renderMatchView(){const L=t(),box=$("#matchBody");renderCustom();
     <div class="probs">${[["h","H","1 · "+L.win],["x","X","X · "+L.draw],["a","A","2 · "+L.win]].map(([c,k,lab])=>`<div class="pb ${c} ${r[k]===top?"fav":""}"><div class="eyebrow">${lab}</div><b>${pct(r[k])}%</b><small>@ ${(1/r[k]).toFixed(2)}</small></div>`).join("")}</div>
     <div class="stack"><i style="flex-basis:${r.H*100}%;background:var(--home)"></i><i style="flex-basis:${r.X*100}%;background:var(--draw)"></i><i style="flex-basis:${r.A*100}%;background:var(--away)"></i></div>
     <div class="chips"><span class="chip ${["bad","warn","good"][r.conf]}">${L.confT}: ${L.confLv[r.conf]}</span></div>
-    <div class="pickbox ${pk.k}"><span class="eyebrow">${esc(pl.kind)}</span><div class="pkm"><b>${pl.code}</b><span>${esc(pl.txt)}</span><em>${pct(pk.p)}%</em></div></div>${wxHTML(m)}
+    <div class="pickbox ${pk.k}"><span class="eyebrow">${esc(pl.kind)}</span><div class="pkm"><b>${pl.code}</b><span>${esc(pl.txt)}</span><em>${pct(pk.p)}%</em></div></div>${r.nat?natHTML(m):""}${wxHTML(m)}
     ${markets(h,a,r)}
     ${srcTable(r)}
   </div>
