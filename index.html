@@ -893,6 +893,9 @@ const I18N2={
   confT:"Confianza",confLv:["baja","media","alta"],kick:"Inicio",open:"Análisis"}
 };
 
+const APPV="v30";
+(function(){const show=msg=>{try{let b=document.getElementById("errbar");if(!b){b=document.createElement("div");b.id="errbar";b.style.cssText="position:fixed;left:8px;right:8px;bottom:84px;z-index:9999;background:#7f1d1d;color:#fff;font:12px/1.4 monospace;padding:8px 10px;border-radius:8px;white-space:pre-wrap";document.body&&document.body.appendChild(b)}b.textContent="Błąd aplikacji ("+APPV+"): "+msg+"\nZrób zrzut ekranu i wyślij."}catch(e){}};
+ window.addEventListener("error",e=>show((e.message||"")+" @"+(e.lineno||"")));window.addEventListener("unhandledrejection",e=>show(String(e.reason&&e.reason.stack||e.reason).slice(0,300)))})();
 /* ---------- BASICS ---------- */
 const $=s=>document.querySelector(s);
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -1601,7 +1604,8 @@ function renderTodayList(){const L=t(),box=$("#todayList"),q=norm($("#tq").value
   if(ONLINE===true&&!FEED&&DG){const e=[...DG.entries()],cnt=s=>e.filter(x=>x[1].s===s).length,lab=c=>esc(lgMeta(c).name);
     const row=(s,t)=>{const l=e.filter(x=>x[1].s===s);return l.length?`<p><b>${t}</b> ${l.map(([c,v])=>`${lab(c)}${v.n?` (${v.n})`:""}`).join(", ")}</p>`:""};
     const blk=Date.now()<tsBlock?` · ⚠ TheSportsDB limit (${Math.ceil((tsBlock-Date.now())/60e3)} min)`:"";
-    diag=`<details class="diag"><summary>${S2.src}: ESPN ${cnt("espn")} · TheSportsDB ${cnt("tsdb")} · ${S2.err} ${cnt("err")+cnt("none")}${blk}</summary>${row("espn","ESPN:")}${row("tsdb","TheSportsDB:")}${row("err",S2.err+" (ESPN):")}${row("none",S2.none+":")}</details>`}
+    diag=`<details class="diag"><summary>${APPV} · ${S2.src}: ESPN ${cnt("espn")} · TheSportsDB ${cnt("tsdb")} · ${S2.err} ${cnt("err")+cnt("none")}${blk}</summary>${row("espn","ESPN:")}${row("tsdb","TheSportsDB:")}${row("err",S2.err+" (ESPN):")}${row("none",S2.none+":")}</details>`}
+  if(!diag)diag=`<div class="diag">${APPV} · ${ONLINE===true?"online":"offline"} · ESPN ${ESPNOK===true?"OK":ESPNOK===false?"✗":"…"}${FEED?" · feed":""}</div>`;
   box.innerHTML=(list.length?tools+grouped(list):`<div class="empty">${qw.length?S2.noHit(esc($("#tq").value)):all.length?L.noneFilter:L.none}</div>`)+other+diag;
 
 }
