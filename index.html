@@ -1090,7 +1090,7 @@ async function loadDay(off,only){if(FEED)return 0;
   const key=ymd(dayDate(off));if(!SB.has(key))SB.set(key,new Map());const M=SB.get(key);
   const codes=(only||[...Object.keys(LEAGUES).filter(k=>LEAGUES[k].espn),...Object.keys(CUPS)]).filter(c=>!ESPNDEAD.has(c));let ok=0;
   if(!DIAG.has(key))DIAG.set(key,new Map());const DG=DIAG.get(key);
-  if(ESPNOK!==false)await pool(codes,5,async code=>{try{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;if(ESPNOK===null){ESPNOK=true;ONLINE=true;try{renderChromeAll()}catch(_){}}if(ONLINE===true)scheduleRender();const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);if(CUPS[code]&&CUPS[code].nat)natLearn(ev);if(!ev.length&&(M.get(code)||[]).some(m=>m.src==="tsdb"))return;M.set(code,ev);logQ.push(...ev);DG.set(code,{s:"espn",n:ev.length})}catch(e){if(/http 40[04]/.test(e&&e.message)){ESPNDEAD.add(code);try{localStorage.setItem("skaner-dead",JSON.stringify({t:Date.now(),c:[...ESPNDEAD]}))}catch(_){}}if(!DG.has(code)||DG.get(code).s==="err")DG.set(code,{s:"err",n:0})}});
+  if(ESPNOK!==false)await pool(codes,5,async code=>{try{const j=await getJSON(`${API}${slugOf(code)}/scoreboard?dates=${key}&limit=200`);ok++;if(ESPNOK===null){ESPNOK=true;ONLINE=true;try{renderChromeAll()}catch(_){}}if(ONLINE===true)scheduleRender();const ev=(j.events||[]).map(e=>parseEvent(e,code)).filter(Boolean);if(CUPS[code]&&CUPS[code].nat)natLearn(ev);if(!ev.length&&(M.get(code)||[]).some(m=>m.src==="tsdb"))return;M.set(code,ev);logQ.push(...ev);DG.set(code,{s:"espn",n:ev.length})}catch(e){if(/http 40[04]/.test(e&&e.message)&&!CUPS[code]){const n=(DEADN.get(code)||0)+1;DEADN.set(code,n);if(n>=3){ESPNDEAD.add(code);try{localStorage.setItem("skaner-dead2",JSON.stringify({t:Date.now(),c:[...ESPNDEAD]}))}catch(_){}}}if(!DG.has(code)||DG.get(code).s==="err")DG.set(code,{s:"err",n:0})}});
   const tsP=loadTSDB(key,M,DG).then(()=>{if(logQ.length){const q=logQ.splice(0);logMatches(q)}TBL.clear();if(ONLINE===true)scheduleRender()}).catch(()=>{});
   if(ESPNOK===false)await tsP;
   if(ESPNOK===false)ok=[...M.values()].some(l=>l.length)?1:ok;
@@ -1099,7 +1099,7 @@ async function loadDay(off,only){if(FEED)return 0;
 /* ---- Backup source: TheSportsDB (free API) for leagues ESPN doesn't return ---- */
 const DIAG=new Map();
 /* leagues ESPN answers "Failed to get events endpoint" for (e.g. Ekstraklasa): skip ESPN, use the backup source */
-const ESPNDEAD=new Set(["ek"]);try{const d=JSON.parse(localStorage.getItem("skaner-dead")||"null");if(d&&Date.now()-d.t<864e5)d.c.forEach(c=>ESPNDEAD.add(c))}catch(e){}const TSDB="https://www.thesportsdb.com/api/v1/json/123/";
+const ESPNDEAD=new Set(["ek"]),DEADN=new Map();try{localStorage.removeItem("skaner-dead");const d=JSON.parse(localStorage.getItem("skaner-dead2")||"null");if(d&&Date.now()-d.t<864e5)d.c.forEach(c=>ESPNDEAD.add(c))}catch(e){}const TSDB="https://www.thesportsdb.com/api/v1/json/123/";
 const TSRULE=[["l1en",/english league (1|one)\b/],["l2en",/english league (2|two)\b/],["ch",/english (league )?championship/],["pl",/english premier/],
  ["pl1",/polish (i|1)\.? liga|polish first league/],["ek",/polish|ekstraklasa/],["l2",/spanish (la ?liga 2|segunda|la liga hypermotion)/],["ll",/spanish la ?liga|spanish primera/],
  ["sb",/italian serie b/],["sa",/italian serie a/],["d3",/german 3\.? ?liga/],["b2",/german 2\.? ?bundesliga/],["bl",/german bundesliga/],["f2",/french ligue 2/],["l1",/french ligue 1/],
