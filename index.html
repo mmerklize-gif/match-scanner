@@ -679,6 +679,7 @@ body{background:transparent!important;position:relative}
 
 .natbox{margin:12px 0 0;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .natm{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:14px}.natm b{font-size:17px;font-variant-numeric:tabular-nums}.natm em{font-style:normal;color:var(--gold);font-weight:700;margin:0 auto}
+.jscope .seg button[aria-pressed="true"]{color:var(--gold)}
 </style>
 <div class="wrap">
   <header class="topbar">
@@ -893,7 +894,7 @@ const I18N2={
   confT:"Confianza",confLv:["baja","media","alta"],kick:"Inicio",open:"Análisis"}
 };
 
-const APPV="v30";
+const APPV="v31";
 (function(){const show=msg=>{try{let b=document.getElementById("errbar");if(!b){b=document.createElement("div");b.id="errbar";b.style.cssText="position:fixed;left:8px;right:8px;bottom:84px;z-index:9999;background:#7f1d1d;color:#fff;font:12px/1.4 monospace;padding:8px 10px;border-radius:8px;white-space:pre-wrap";document.body&&document.body.appendChild(b)}b.textContent="Błąd aplikacji ("+APPV+"): "+msg+"\nZrób zrzut ekranu i wyślij."}catch(e){}};
  window.addEventListener("error",e=>show((e.message||"")+" @"+(e.lineno||"")));window.addEventListener("unhandledrejection",e=>show(String(e.reason&&e.reason.stack||e.reason).slice(0,300)))})();
 /* ---------- BASICS ---------- */
@@ -1387,11 +1388,14 @@ var JS={pl:{hit:"Trafione",miss:"Nietrafione",wait:"Czeka na wynik",all:"Wszystk
  en:{hit:"Won",miss:"Lost",wait:"Waiting for result",all:"All",pick:"Pick",draw:"Draw",acc:(h,n)=>`${h} of ${n} picks won`,none:"No matches in this period.",intro:"The app saves its pick before every match and checks after full time whether it won."},
  de:{hit:"Getroffen",miss:"Daneben",wait:"Wartet auf Ergebnis",all:"Alle",pick:"Tipp",draw:"Remis",acc:(h,n)=>`${h} von ${n} Tipps getroffen`,none:"Keine Spiele in diesem Zeitraum.",intro:"Die App speichert vor jedem Spiel ihren Tipp und prüft nach Abpfiff, ob er getroffen hat."},
  es:{hit:"Acertados",miss:"Fallados",wait:"Esperando resultado",all:"Todos",pick:"Pronóstico",draw:"Empate",acc:(h,n)=>`${h} de ${n} pronósticos acertados`,none:"No hay partidos en este periodo.",intro:"La app guarda su pronóstico antes de cada partido y comprueba al final si acertó."}};
-let jFilt="all";let JC=new Set();try{JC=new Set(JSON.parse(localStorage.getItem("skaner-jcoll")||"[]"))}catch(e){}
+let jFilt="all",jScope="all";try{jScope=localStorage.getItem("skaner-jscope")==="fav"?"fav":"all"}catch(e){}
+const jIsFav=e=>FAV.leagues.has(e.c)||isFavT(e.h)||isFavT(e.a);
+var JSC={pl:["Wszystkie mecze","★ Moje ulubione","Nie masz jeszcze ulubionych. Dodaj ligę lub drużynę gwiazdką ☆, a jej mecze będą liczone tutaj osobno.","Brak rozliczonych meczów Twoich ulubionych w tym okresie."],en:["All matches","★ My favourites","No favourites yet. Star a league or team ☆ and its matches will be counted here separately.","No settled matches of your favourites in this period."],de:["Alle Spiele","★ Meine Favoriten","Noch keine Favoriten. Markiere eine Liga oder ein Team mit ☆, dann werden ihre Spiele hier separat gezählt.","Keine abgerechneten Spiele deiner Favoriten in diesem Zeitraum."],es:["Todos los partidos","★ Mis favoritos","Aún no tienes favoritos. Marca una liga o equipo con ☆ y sus partidos se contarán aquí por separado.","No hay partidos liquidados de tus favoritos en este periodo."]};let JC=new Set();try{JC=new Set(JSON.parse(localStorage.getItem("skaner-jcoll")||"[]"))}catch(e){}
 const jPick=e=>pickOf(e.p[0],e.p[1],e.p[2]);
 const jOk=e=>e.r?pickHit(jPick(e),e.r):null;
 function renderJournal(){const J=t().jr,S=JS[lang]||JS.en,box=$("#journalBody");const now=Date.now();
-  const all=Object.values(LOG).filter(e=>e&&e.p&&e.d);const inP=e=>jPeriod===0||(jPeriod===1?new Date(e.d).toDateString()===new Date().toDateString():new Date(e.d).getTime()>now-jPeriod*864e5);
+  const JSX=JSC[lang]||JSC.en,hasFav=FAV.leagues.size+FAV.teams.size>0;
+  const all=Object.values(LOG).filter(e=>e&&e.p&&e.d&&(jScope!=="fav"||jIsFav(e)));const inP=e=>jPeriod===0||(jPeriod===1?new Date(e.d).toDateString()===new Date().toDateString():new Date(e.d).getTime()>now-jPeriod*864e5);
   const done=all.filter(e=>e.r&&inP(e)).sort((a,b)=>b.d.localeCompare(a.d));
   const pending=all.filter(e=>!e.r&&new Date(e.d).getTime()>now-3*3600e3).sort((a,b)=>a.d.localeCompare(b.d));
   const hits=done.filter(jOk),miss=done.filter(e=>!jOk(e)),pc=done.length?Math.round(hits.length/done.length*100):0;
@@ -1400,10 +1404,12 @@ function renderJournal(){const J=t().jr,S=JS[lang]||JS.en,box=$("#journalBody");
   const shown=jFilt==="hit"?hits:jFilt==="miss"?miss:done;
   const byDay=[];shown.forEach(e=>{const k=new Date(e.d).toDateString();let g=byDay.find(x=>x.k===k);if(!g)byDay.push(g={k,d:e.d,l:[]});g.l.push(e)});
   box.innerHTML=`<section class="panel jx">
+    <div class="jtop jscope">${seg("js",jScope,[["all",JSX[0]],["fav",JSX[1]]])}</div>
     <div class="jtop">${seg("jp",jPeriod,[[1,today],[7,J.p7],[30,J.p30],[0,J.pAll]])}</div>
+    ${jScope==="fav"&&!hasFav?`<div class="empty">${JSX[2]}</div>`:""}
     ${done.length?`<div class="jscore"><span class="y">✓ ${hits.length}</span><span class="n">✗ ${miss.length}</span><b>${pc}%</b></div>
     <div class="jbig" aria-hidden="true"><i style="width:${pc}%"></i></div>
-    <div class="jtop">${seg("jf",jFilt,[["all",S.all],["hit","✓ "+S.hit],["miss","✗ "+S.miss]])}</div>`:`<div class="empty">${all.length?S.none:(ONLINE===true?J.emptyOn:J.emptyOff)}</div>`}
+    <div class="jtop">${seg("jf",jFilt,[["all",S.all],["hit","✓ "+S.hit],["miss","✗ "+S.miss]])}</div>`:(jScope==="fav"&&!hasFav?"":`<div class="empty">${jScope==="fav"?JSX[3]:all.length?S.none:(ONLINE===true?J.emptyOn:J.emptyOff)}</div>`)}
     ${pending.length?jsec("wait",`⏳ ${S.wait}`,pending.length,pending.slice(0,30).map(jrow).join("")):""}
     ${byDay.map(g=>jsec(g.k.replace(/\s/g,"-"),fmtDate(g.d,{weekday:"short",day:"numeric",month:"short"}),`${g.l.filter(jOk).length}/${g.l.length}`,g.l.map(jrow).join(""))).join("")}
     <div class="jfoot"><button type="button" class="lnk" id="jCopy">${J.copy}</button>
@@ -1419,6 +1425,7 @@ function jCSV(){const rows=[["id","league","date","home","away","p1","pX","p2","
   return rows.map(r=>r.map(v=>{const s=String(v??"");return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s}).join(",")).join("\n")}
 document.addEventListener("click",async e=>{const T=e.target;
   const jp=T.closest("[data-jp]");if(jp){jPeriod=+jp.dataset.jp;renderJournal();return}
+  const jsb=T.closest("[data-js]");if(jsb){jScope=jsb.dataset.js;try{localStorage.setItem("skaner-jscope",jScope)}catch(_){}renderJournal();return}
   const jc=T.closest("[data-jc]");if(jc){const k=jc.dataset.jc;JC.has(k)?JC.delete(k):JC.add(k);try{localStorage.setItem("skaner-jcoll",JSON.stringify([...JC].slice(-60)))}catch(_){}const sc=jc.closest(".jsec");sc.classList.toggle("coll",JC.has(k));jc.setAttribute("aria-expanded",!JC.has(k));return}
   const jf=T.closest("[data-jf]");if(jf){jFilt=jf.dataset.jf;renderJournal();return}
   if(T.closest("#jClear")){jConfirm=true;renderJournal();return}
